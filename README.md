@@ -91,6 +91,7 @@ The Maven target for Agent-o-rama is:
 
 * [Quickstart](https://github.com/redplanetlabs/agent-o-rama/wiki/Quickstart)
 * [Full documentation](https://github.com/redplanetlabs/agent-o-rama/wiki)
+* [Documentation chatbot](https://chat.redplanetlabs.com/)
 * [Javadoc](https://redplanetlabs.com/aor/javadoc/index.html)
 * [Clojuredoc](https://redplanetlabs.com/aor/clojuredoc/index.html)
 * [Mailing list](https://groups.google.com/u/1/g/rama-user)
