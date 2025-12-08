@@ -64,6 +64,11 @@
   [{:as ev-msg :keys [?data]}]
   (state/dispatch [:db/set-value [:sente :connected?] true]))
 
+;; Handler for server-pushed streaming updates
+(defmethod -event-msg-handler :stream/update
+  [{:as ev-msg :keys [?data]}]
+  (state/dispatch [:stream/update ?data]))
+
 ;; 4. Router lifecycle functions
 (defonce router_ (atom nil))
 
@@ -90,11 +95,9 @@
   ([event-vec timeout-ms]
    (request! event-vec timeout-ms nil))
   ([event-vec timeout-ms callback]
-   #_(println "SENDING SENTE EVENT:" event-vec timeout-ms callback)
    (chsk-send! event-vec
                timeout-ms
                (fn [reply]
-                 #_(println "SENTE EVENT REPLY:" reply)
                  (callback reply)))))
 
 (defn push!

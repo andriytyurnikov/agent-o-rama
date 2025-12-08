@@ -49,10 +49,16 @@
      :spec {:type (if is-regular? :regular :comparative)
             :targets (mapv
                       (fn [t]
-                        (let [ts (:target-spec t)]
+                        (let [ts (:target-spec t)
+                              metadata (:metadata t)
+                              metadata-str (cond
+                                             (nil? metadata) ""
+                                             (string? metadata) metadata
+                                             :else (js/JSON.stringify (clj->js metadata)))]
                           {:target-spec (if (:node ts)
                                           (assoc ts :type :node)
                                           (assoc ts :type :agent))
+                           :metadata metadata-str
                            :input->args (normalize-mappings (:input->args t))}))
                       targets)}
      :evaluators (:evaluators info)
@@ -256,7 +262,7 @@
           ($ :textarea.w-full.p-2.border.border-gray-300.rounded-md.text-sm.font-mono
              {:placeholder "{ \"key\": \"value\" }"
               :value (or (:value metadata-field) "")
-              :onChange (:on-change metadata-field)
+              :onChange #((:on-change metadata-field) (.. % -target -value))
               :rows 3})
           (when (:error metadata-field)
             ($ :p.text-sm.text-red-600.mt-1 (:error metadata-field))))
@@ -307,8 +313,9 @@
         use-remote-evaluators-field (forms/use-form-field form-id :use-remote-evaluators)
         use-remote-evaluators? (:value use-remote-evaluators-field)
 
-        ;; Get selected examples from global state
-        selected-example-ids (or (state/use-sub [:ui :datasets :selected-examples dataset-id]) #{})
+;; Get selected examples from form state (passed as initial data)
+        selector-example-ids-field (forms/use-form-field form-id [:selector :example-ids])
+        selected-example-ids (or (:value selector-example-ids-field) #{})
         selection-count (count selected-example-ids)
 
         ;; Target config fields
@@ -373,9 +380,10 @@
                        :checked (= (:value selector-type-field) :example-ids)
                        :disabled (zero? selection-count) ;; Disable if nothing is selected
                        :on-change #((:on-change selector-type-field) :example-ids)})
-                   ($ :label.ml-3.block.text-sm.text-gray-700
+                   ($ :label
                       {:htmlFor "selected-examples"
-                       :className (when (zero? selection-count) "text-gray-400 cursor-not-allowed")
+                       :className (common/cn "ml-3 block text-sm text-gray-700"
+                                             {"text-gray-400 cursor-not-allowed" (zero? selection-count)})
                        :title (when (zero? selection-count) "Select examples from the list to enable this option.")}
                       (if (pos? selection-count)
                         (str "Only the " selection-count " selected examples")
@@ -514,13 +522,8 @@
   (fn [db form-state]
     (let [{:keys [form-id module-id dataset-id spec]} form-state
           spec-type (get spec :type)
-          ;; Get selected IDs from the DB at submission time
-          selected-ids (get-in db [:ui :datasets :selected-examples dataset-id])
-
-          ;; Add selected IDs to the selector if that option was chosen
-          form-with-selection (if (= (get-in form-state [:selector :type]) :example-ids)
-                                (assoc-in form-state [:selector :example-ids] (vec selected-ids))
-                                form-state)
+;; Example IDs are already in form-state from initial data, no need to add them
+          form-with-selection form-state
 
           ;; Parse metadata and convert input->args back to simple strings for the backend
           cleaned-form-state (update-in form-with-selection [:spec :targets]

@@ -8,12 +8,21 @@
 
 (def transit-packer (sente-transit/get-transit-packer :json))
 
+(defn- get-user-id
+  "Extract or generate a unique user ID from the Ring request.
+  Uses the session :uid if present, otherwise falls back to :sente/nil-uid."
+  [request]
+  
+  (or (get-in request [:session :uid])
+      (throw (ex-info "no uid found in session" {:session (:session request)}))))
+
 (let [{:keys [ch-recv send-fn connected-uids
               ajax-post-fn ajax-get-or-ws-handshake-fn]}
       (sente/make-channel-socket-server!
        (http-kit-adapter/get-sch-adapter)
        {:csrf-token-fn nil
-        :packer transit-packer})]
+        :packer transit-packer
+        :user-id-fn get-user-id})]
   (def ring-ajax-post ajax-post-fn)
   (def ring-ajax-get-or-ws-handshake ajax-get-or-ws-handshake-fn)
   (def ch-chsk ch-recv)
@@ -29,7 +38,7 @@
 
         ;; The rest of the function now operates on the processed message
         {:keys [id ?reply-fn ?data uid]} processed-ev-msg
-        handler-fn       (get-method -event-msg-handler id)]
+        handler-fn (get-method -event-msg-handler id)]
 
     ;; Check if we found a specific handler or just the default
     (if (= handler-fn (get-method -event-msg-handler :default))
@@ -57,7 +66,17 @@
 (defmethod -event-msg-handler :chsk/ws-ping [_ _])
 (defmethod -event-msg-handler :chsk/ws-pong [_ _])
 (defmethod -event-msg-handler :chsk/uidport-open [_ _])
-(defmethod -event-msg-handler :chsk/uidport-close [_ _])
+(defmethod -event-msg-handler :chsk/uidport-close
+  [_data uid]
+  (println "[SENTE] Client disconnected, cleaning up streams for uid:" uid)
+  ;; Call streaming cleanup - require dynamically to avoid circular deps
+  (when-let [cleanup-fn (try
+                          (requiring-resolve 'com.rpl.agent-o-rama.impl.ui.handlers.streaming/close-all-streams-for-uid!)
+                          (catch Exception e
+                            (println "exception" e)
+                            nil))]
+
+    (cleanup-fn uid)))
 
 (defonce router_ (atom nil))
 

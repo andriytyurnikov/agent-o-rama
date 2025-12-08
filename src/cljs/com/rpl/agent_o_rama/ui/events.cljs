@@ -3,7 +3,8 @@
             [com.rpl.agent-o-rama.ui.state :as state]
             [com.rpl.agent-o-rama.ui.common :as common]
             [com.rpl.specter :as s]
-            [clojure.string :as str]))
+            [clojure.string :as str]
+            [clojure.walk :as walk]))
 
 ;; Orchestration events that perform side-effects using sente helpers,
 ;; keeping React components pure.
@@ -362,3 +363,28 @@
                           (state/dispatch [:query/invalidate {:query-key-pattern [:dataset-examples module-id dataset-id snapshot-name]}]))
                         (js/alert (str "Failed to delete examples: " (:error reply))))))
                    nil))
+
+;; =============================================================================
+;; STREAMING EVENTS
+;; =============================================================================
+
+;; Handle incoming chunks pushed from server via WebSocket
+(state/reg-event :stream/update
+  (fn [db {:keys [stream-id new-chunks reset? complete?]}]
+    ;; If reset? is true (node retry happened), wipe the buffer and start fresh
+    (let [update-path [:streaming :buffers stream-id]]
+      (if reset?
+        ;; Reset: replace chunks entirely
+        (s/multi-path
+         [update-path :chunks (s/terminal-val new-chunks)]
+         [update-path :reset-count (s/terminal #(inc (or % 0)))]
+         [update-path :complete? (s/terminal-val complete?)])
+        ;; Normal update: append new chunks
+        (s/multi-path
+         [update-path :chunks (s/terminal #(into (or % []) new-chunks))]
+         [update-path :complete? (s/terminal-val complete?)])))))
+
+;; Clear buffer when component unmounts
+(state/reg-event :stream/cleanup
+  (fn [db {:keys [stream-id]}]
+    [:streaming :buffers (s/terminal #(dissoc % stream-id))]))

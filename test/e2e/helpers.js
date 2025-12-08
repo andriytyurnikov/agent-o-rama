@@ -105,9 +105,18 @@ export async function createEvaluator(page, { name, builderName, description, pa
 export async function addExample(page, { input, output, tags }) {
   console.log('Adding example with input:', JSON.stringify(input), 'tags:', tags);
   
-  // Step 1: Count existing rows before adding
-  const rowsBefore = await page.locator('table tbody tr').count();
-  console.log(`Rows before adding example: ${rowsBefore}`);
+  // Step 1: Check if table exists (may not exist if no examples yet)
+  const table = page.locator('table tbody');
+  
+  let rowsBefore = 0;
+  if (await table.isVisible().catch(() => false)) {
+    // Wait for table to be stable before counting
+    await page.waitForTimeout(300);
+    rowsBefore = await page.locator('table tbody tr').count();
+    console.log(`Rows before adding example: ${rowsBefore}`);
+  } else {
+    console.log('No table yet (empty state)');
+  }
   
   // Step 2: Create the example
   await page.locator('button').filter({ hasText: 'Add Example' }).filter({ hasNot: page.locator('[disabled]') }).first().click();
@@ -123,7 +132,12 @@ export async function addExample(page, { input, output, tags }) {
   await createModal.getByRole('button', { name: 'Add Example' }).click();
   await expect(createModal).not.toBeVisible({ timeout: 15000 });
 
-  // Step 3: Wait for the new row to appear
+  // Wait for paginated query to refetch after invalidation
+  await page.waitForTimeout(500);
+
+  // Step 3: Wait for table to appear (if it didn't exist) and new row to be added
+  await expect(table).toBeVisible({ timeout: 5000 });
+  
   await expect(async () => {
     const rowsAfter = await page.locator('table tbody tr').count();
     expect(rowsAfter).toBe(rowsBefore + 1);
@@ -207,6 +221,11 @@ export async function createDataset(page, name) {
  * @returns {Promise<void>}
  */
 export async function deleteDataset(page, name) {
+  if (shouldSkipCleanup()) {
+    console.log(`⏭️  Skipping cleanup: Keeping dataset "${name}" (set SKIP_CLEANUP=false to enable cleanup)`);
+    return;
+  }
+  
   console.log(`Deleting dataset: ${name}`);
   
   // Set up dialog handler before clicking delete (only if not already handled)
@@ -243,6 +262,11 @@ export async function deleteDataset(page, name) {
  * @returns {Promise<void>}
  */
 export async function deleteEvaluator(page, name) {
+  if (shouldSkipCleanup()) {
+    console.log(`⏭️  Skipping cleanup: Keeping evaluator "${name}" (set SKIP_CLEANUP=false to enable cleanup)`);
+    return;
+  }
+  
   console.log(`Deleting evaluator: ${name}`);
   
   // Search for the evaluator first to ensure it's visible
@@ -287,6 +311,15 @@ export async function deleteEvaluator(page, name) {
 }
 
 /**
+ * Checks if cleanup should be skipped based on environment variable.
+ * Set SKIP_CLEANUP=true or KEEP_TEST_DATA=true to skip cleanup.
+ * @returns {boolean} True if cleanup should be skipped, false otherwise.
+ */
+export function shouldSkipCleanup() {
+  return process.env.SKIP_CLEANUP === 'true' || process.env.KEEP_TEST_DATA === 'true';
+}
+
+/**
  * Adds an evaluator to an experiment form using the new search-based selector.
  * This function works with the searchable evaluator selector introduced in the UI refactoring.
  * @param {import('@playwright/test').Page} page - The Playwright page object.
@@ -308,25 +341,27 @@ export async function addEvaluatorToExperiment(page, modal, evaluatorName) {
   await searchInput.clear();
   await searchInput.fill(evaluatorName);
 
-  // Wait for the dropdown container to appear first
-  const dropdownContainer = page.locator('.absolute.z-10');
-  await expect(dropdownContainer).toBeVisible({ timeout: 15000 });
+  // Wait for the dropdown container (listbox) to appear.
+  // The popover is rendered in a portal, so target it globally.
+  const listboxes = page.getByRole('listbox', { name: 'Evaluator search results' });
+  await expect(listboxes.first()).toBeVisible({ timeout: 15000 });
 
   // Check if we see "Loading..." and wait for it to finish
-  const loadingText = dropdownContainer.getByText('Loading...');
+  const loadingText = listboxes.getByText('Loading...');
   const hasLoading = await loadingText.isVisible().catch(() => false);
   if (hasLoading) {
     console.log(`Waiting for evaluator search results for "${evaluatorName}"...`);
     await expect(loadingText).not.toBeVisible({ timeout: 30000 });
   }
 
-  // Now wait for the specific evaluator to appear in the dropdown
-  // This accounts for: 300ms debounce + query execution + render time
-  const dropdown = page.locator('.absolute.z-10').filter({ hasText: evaluatorName });
-  await expect(dropdown).toBeVisible({ timeout: 15000 });
+  // Now wait for the specific evaluator option to appear in the dropdown
+  const evaluatorOption = page
+    .getByRole('option', { name: evaluatorName, exact: true })
+    .first();
+  await expect(evaluatorOption).toBeVisible({ timeout: 15000 });
   
   // Click the evaluator in the dropdown
-  await dropdown.getByText(evaluatorName, { exact: true }).click();
+  await evaluatorOption.click();
   
   // Verify the evaluator was added by checking for its badge
   await expect(modal.getByText(evaluatorName, { exact: true })).toBeVisible();

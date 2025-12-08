@@ -1,8 +1,9 @@
 (ns com.rpl.agent-o-rama.ui.experiments.index
   (:require
    [uix.core :as uix :refer [defui $]]
-   ["@heroicons/react/24/outline" :refer [BeakerIcon PlusIcon TrashIcon MagnifyingGlassIcon]]
+   ["@heroicons/react/24/outline" :refer [BeakerIcon PlusIcon TrashIcon MagnifyingGlassIcon XMarkIcon]]
    ["use-debounce" :refer [useDebounce]]
+   ["react-datetime-picker" :default DateTimePicker]
    [com.rpl.agent-o-rama.ui.common :as common]
    [com.rpl.agent-o-rama.ui.state :as state]
    [com.rpl.agent-o-rama.ui.queries :as queries]
@@ -66,16 +67,32 @@
         [search-term set-search-term] (uix/use-state "")
         [debounced-search-term] (useDebounce search-term 300)
 
-        ;; Update the query hook to use the debounced search term
+        ;; Add state for date range filtering
+        [start-date set-start-date] (uix/use-state nil)
+        [end-date set-end-date] (uix/use-state nil)
+
+        ;; Build the times filter based on selected dates
+        times-filter (when (or start-date end-date)
+                       (cond-> []
+                         start-date (conj {:pred :>= :value (.getTime start-date)})
+                         end-date (conj {:pred :<= :value (.getTime end-date)})))
+
+        ;; Convert dates to timestamps for the query key (dates aren't serializable)
+        start-ts (when start-date (.getTime start-date))
+        end-ts (when end-date (.getTime end-date))
+
         {:keys [data loading? error]}
         (queries/use-sente-query
-         {:query-key [:experiments module-id dataset-id :regular debounced-search-term]
+         {:query-key [:experiments module-id dataset-id :regular debounced-search-term start-ts end-ts]
           :sente-event [:experiments/get-all-for-dataset
                         {:module-id module-id
                          :dataset-id dataset-id
-                         :filters {:type :regular
-                                   :search-string (when-not (str/blank? debounced-search-term)
-                                                    debounced-search-term)}}]
+                         :filters (cond-> {:type :regular}
+                                    (not (str/blank? debounced-search-term))
+                                    (assoc :search-string debounced-search-term)
+
+                                    (seq times-filter)
+                                    (assoc :times times-filter))}]
           :enabled? (boolean (and module-id dataset-id))
           :refresh-interval-ms 1000})
 
@@ -110,6 +127,38 @@
                                           :spec {:type :regular}}])}
              ($ PlusIcon {:className "h-5 w-5 mr-2"})
              "Run New Experiment"))
+
+;; Date range filters
+       ($ :div.flex.items-center.gap-4.mb-6
+          ($ :div.flex.items-center.gap-2
+             ($ :label.text-sm.font-medium.text-gray-700 "Start Date:")
+             ($ DateTimePicker
+                {:value start-date
+                 :onChange set-start-date
+                 :className "border border-gray-300 rounded-md"
+                 :clearIcon nil
+                 :maxDate end-date
+                 :disableClock true})
+             (when start-date
+               ($ :button.p-1.text-gray-400.hover:text-gray-600.transition-colors
+                  {:onClick #(set-start-date nil)
+                   :title "Clear start date"}
+                  ($ XMarkIcon {:className "h-5 w-5"}))))
+
+          ($ :div.flex.items-center.gap-2
+             ($ :label.text-sm.font-medium.text-gray-700 "End Date:")
+             ($ DateTimePicker
+                {:value end-date
+                 :onChange set-end-date
+                 :className "border border-gray-300 rounded-md"
+                 :clearIcon nil
+                 :minDate start-date
+                 :disableClock true})
+             (when end-date
+               ($ :button.p-1.text-gray-400.hover:text-gray-600.transition-colors
+                  {:onClick #(set-end-date nil)
+                   :title "Clear end date"}
+                  ($ XMarkIcon {:className "h-5 w-5"})))))
 
        ;; Main content
        (cond

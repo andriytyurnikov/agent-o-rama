@@ -13,6 +13,7 @@
    [com.rpl.agent-o-rama.ui.trace-analytics :as trace-analytics]
    [com.rpl.agent-o-rama.ui.feedback :as feedback]
    [com.rpl.agent-o-rama.ui.components.conversation :as conversation]
+   [com.rpl.agent-o-rama.ui.streaming :as streaming]
 
    ["react" :refer [useState useCallback useEffect]]
    ["@xyflow/react" :refer [ReactFlow Background Controls useNodesState useEdgesState Handle MiniMap]]
@@ -420,6 +421,50 @@
                  ($ :div {:className "text-xs text-indigo-600 mt-1"}
                     ($ generic-data-viewer {:data info :color "indigo" :depth 0})))))))))
 
+(defui node-streaming-panel
+  "Displays real-time streaming output from a node.
+   Only shown when the node is actively streaming (in progress and not complete)."
+  [{:keys [module-id agent-name invoke-id node-name node-invoke-id is-streaming?]}]
+  (let [{:keys [text streaming? chunks reset-count]}
+        (streaming/use-node-stream module-id agent-name invoke-id node-name node-invoke-id)
+        
+        ;; Ref for auto-scrolling
+        scroll-ref (uix/use-ref nil)]
+    
+    ;; Auto-scroll to bottom when text changes
+    (uix/use-effect
+     (fn []
+       (when-let [el @scroll-ref]
+         (set! (.-scrollTop el) (.-scrollHeight el))))
+     [text])
+    
+    ;; Only show the panel if we have chunks to display
+    (when (seq chunks)
+      ($ :div {:className "bg-blue-50 p-3 rounded-md mt-4 border border-blue-200"}
+         ($ :div {:className "flex items-center justify-between mb-2"}
+            ($ :div {:className "flex items-center gap-2"}
+               ($ :span {:className "text-sm font-medium text-blue-700"} "Streaming Output")
+               (when streaming?
+                 ($ :span {:className "flex items-center gap-1 text-xs text-blue-600"}
+                    ($ :span {:className "w-2 h-2 bg-blue-500 rounded-full animate-pulse"})
+                    "Live")))
+            (when (pos? reset-count)
+              ($ :span {:className "text-xs bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded"}
+                 (str "↻ Reset " reset-count "x"))))
+         
+         ;; Streaming content with auto-scroll
+         ($ :div {:ref scroll-ref
+                  :className "bg-white rounded border border-blue-100 p-3 max-h-64 overflow-y-auto"}
+            ($ :pre {:className "text-sm text-gray-800 whitespace-pre-wrap font-mono"}
+               text
+               (when streaming?
+                 ($ :span {:className "inline-block w-2 h-4 bg-blue-500 animate-pulse ml-0.5"}))))
+         
+         ;; Chunk count
+         (when (seq chunks)
+           ($ :div {:className "mt-2 text-xs text-blue-500"}
+              (str (count chunks) " chunk" (when (not= (count chunks) 1) "s") " received")))))))
+
 (defui node-emits-panel [{:keys [emits graph-data flow-nodes on-select-node on-paginate-node]}]
   (when (and emits (> (count emits) 0))
     ($ :div {:className "mt-4 bg-indigo-50 p-3 rounded-md"}
@@ -459,38 +504,52 @@
 
 (defui node-details-info-panel [{:keys [data hr hr-invoke-id hitl-response submitting? module-id agent-name invoke-id
                                         node-id node-name result exceptions start-time finish-time duration input
-                                        emits graph-data flow-nodes on-select-node on-paginate-node]}]
-  ($ :<>
-     ($ hitl-request-panel {:hr hr
-                            :hr-invoke-id hr-invoke-id
-                            :hitl-response hitl-response
-                            :submitting? submitting?
-                            :module-id module-id
-                            :agent-name agent-name
-                            :invoke-id invoke-id})
+                                        emits graph-data flow-nodes on-select-node on-paginate-node
+                                        agent-invoke-id]}]
+  (let [;; Determine if node is in progress (started but not finished)
+        is-node-in-progress? (and start-time (not finish-time))]
+    ($ :<>
+       ($ hitl-request-panel {:hr hr
+                              :hr-invoke-id hr-invoke-id
+                              :hitl-response hitl-response
+                              :submitting? submitting?
+                              :module-id module-id
+                              :agent-name agent-name
+                              :invoke-id invoke-id})
 
-     ($ node-info-panel {:node-id node-id
-                         :node-name node-name
-                         :graph-data graph-data
-                         :module-id module-id})
+       ($ node-info-panel {:node-id node-id
+                           :node-name node-name
+                           :graph-data graph-data
+                           :module-id module-id})
 
-     ($ node-exceptions-panel {:exceptions exceptions})
+       ;; Streaming panel - shown for nodes that are in progress or have streaming data
+       ;; Uses node-id (specific node invocation UUID) to stream from the correct node instance
+       (when (and agent-invoke-id node-id)
+         ($ node-streaming-panel {:module-id module-id
+                                  :agent-name agent-name
+                                  :invoke-id agent-invoke-id
+                                  :node-name node-name
+                                  :node-invoke-id node-id  ;; Specific node invocation ID
+                                  :is-streaming? is-node-in-progress?}))
 
-     ($ node-input-panel {:input input})
 
-     ($ node-operations-panel {:data data})
+       ($ node-exceptions-panel {:exceptions exceptions})
 
-     ($ node-result-panel {:result result})
+       ($ node-input-panel {:input input})
 
-     ($ node-emits-panel {:emits emits
-                          :graph-data graph-data
-                          :flow-nodes flow-nodes
-                          :on-select-node on-select-node
-                          :on-paginate-node on-paginate-node})
+       ($ node-operations-panel {:data data})
 
-     ($ node-timing-panel {:start-time start-time
-                           :finish-time finish-time
-                           :duration duration})))
+       ($ node-result-panel {:result result})
+
+       ($ node-emits-panel {:emits emits
+                            :graph-data graph-data
+                            :flow-nodes flow-nodes
+                            :on-select-node on-select-node
+                            :on-paginate-node on-paginate-node})
+
+       ($ node-timing-panel {:start-time start-time
+                             :finish-time finish-time
+                             :duration duration}))))
 
 (defui selected-node-component [{:keys [selected-node graph-data on-paginate-node on-select-node flow-nodes module-id agent-name invoke-id]}]
   (let [data (when selected-node
@@ -559,6 +618,7 @@
                   :module-id module-id
                   :agent-name agent-name
                   :invoke-id invoke-id
+                  :agent-invoke-id invoke-id  ;; Pass invoke-id for streaming
                   :node-id node-id
                   :node-name node-name
                   :result result
@@ -980,8 +1040,37 @@
              "Clear All Changes")))))
 
 (defui right-panel [{:keys [graph-data summary-data changed-nodes on-remove-node-change affected-nodes flow-nodes on-select-node on-execute-fork on-clear-fork forking-mode? on-toggle-forking-mode is-live
-                            module-id agent-name task-id forks fork-of invoke-id]}]
-  (let [active-tab (state/use-sub [:ui :active-tab])]
+                            module-id agent-name task-id forks fork-of invoke-id sidebar-width on-sidebar-width-change]}]
+  (let [active-tab (state/use-sub [:ui :active-tab])
+        [is-dragging set-is-dragging] (uix/use-state false)
+
+        handle-mouse-down (fn [e]
+                            (.preventDefault e)
+                            (set-is-dragging true))
+
+        handle-mouse-move (useCallback
+                           (fn [e]
+                             (when is-dragging
+                               (let [new-width (- (.-innerWidth js/window) (.-clientX e))]
+                                 (when (and (>= new-width 280) (<= new-width 800))
+                                   (on-sidebar-width-change new-width)))))
+                           #js [is-dragging on-sidebar-width-change])
+
+        handle-mouse-up (useCallback
+                         (fn [e]
+                           (set-is-dragging false))
+                         #js [])]
+
+    ;; Add/remove mouse event listeners for dragging
+    (uix/use-effect
+     (fn []
+       (when is-dragging
+         (.addEventListener js/document "mousemove" handle-mouse-move)
+         (.addEventListener js/document "mouseup" handle-mouse-up)
+         (fn []
+           (.removeEventListener js/document "mousemove" handle-mouse-move)
+           (.removeEventListener js/document "mouseup" handle-mouse-up))))
+     [is-dragging handle-mouse-move handle-mouse-up])
 
     ;; Update forking mode when tab changes
     (uix/use-effect
@@ -1000,11 +1089,21 @@
          (state/dispatch [:db/set-value [:ui :active-tab] :info])))
      [is-live changed-nodes])
 
-    ($ :div {:className (common/cn "fixed right-0 top-32 h-[calc(100vh-8rem)] w-80 bg-white shadow-lg border-l border-gray-200 flex flex-col z-40")
+    ($ :div {:className "fixed right-0 top-32 h-[calc(100vh-8rem)] bg-white shadow-lg border-l border-gray-200 flex flex-col z-40"
+             :style {:width (str sidebar-width "px")}
              :data-id "agent-info-panel"}
+
+       ;; Draggable resize handle
+       ($ :div {:className (common/cn "absolute left-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-blue-500 transition-colors"
+                                      {"bg-blue-500" is-dragging})
+                :style {:marginLeft "-2px"}
+                :onMouseDown handle-mouse-down}
+          ;; Visual indicator
+          ($ :div {:className "absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-1 h-12 bg-gray-400 rounded-full pointer-events-none"}))
+
        ;; Tab header
-       ($ :div {:className (common/cn "border-b border-gray-200 p-4 flex-shrink-0")}
-          ($ :div {:className (common/cn "flex space-x-1 bg-gray-100 rounded-lg p-1")}
+       ($ :div {:className "border-b border-gray-200 p-4 flex-shrink-0"}
+          ($ :div {:className "flex space-x-1 bg-gray-100 rounded-lg p-1"}
              ($ :button {:className (common/cn "flex-1 py-2 px-3 text-sm font-medium rounded-md transition-colors"
                                                {"bg-white text-gray-900 shadow-sm" (= active-tab :info)
                                                 "text-gray-600 hover:text-gray-900" (not= active-tab :info)})
@@ -1124,6 +1223,9 @@
   (let [;; Convert selected-node-id to actual node object when needed
         [selected-node set-selected-node-internal] (uix/use-state nil)
 
+        ;; Sidebar width state (default 320px)
+        [sidebar-width set-sidebar-width] (common/use-local-storage "graph-sidebar-width" 320)
+
         affected-nodes (when forking-mode?
                          (find-downstream-nodes graph-data (set (keys changed-nodes))))
 
@@ -1168,7 +1270,7 @@
          ($ :div.text-gray-500 "No graph data available"))
       ($ :<>
          ;; Main content area with right margin for the stats panel
-         ($ :div {:className "mr-80"
+         ($ :div {:style {:marginRight (str sidebar-width "px")}
                   :data-id "agent-graph-panel"}
             ($ :div {:style {:width "100%" :height "500px"}}
                ($ ReactFlow {:nodes flow-nodes
@@ -1282,4 +1384,6 @@
                          :task-id task-id
                          :forks forks
                          :fork-of fork-of
-                         :invoke-id invoke-id})))))
+                         :invoke-id invoke-id
+                         :sidebar-width sidebar-width
+                         :on-sidebar-width-change set-sidebar-width})))))
