@@ -23,6 +23,7 @@ scripts/code-format
 .on-save.json
 .vscode
 .claude
+.clojure-mcp
 
 # frontend
 .shadow-cljs/
