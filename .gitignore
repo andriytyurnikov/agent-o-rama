@@ -22,6 +22,7 @@ target/
 scripts/code-format
 .on-save.json
 .vscode
+.claude
 
 # frontend
 .shadow-cljs/
