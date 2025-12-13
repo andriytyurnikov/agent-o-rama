@@ -88,10 +88,17 @@
       (str/replace "{{MAIN_JS}}" (get-js-filename))))
 
 (defn spa-index-handler
-  [_request]
-  (-> (resp/response (render-index-html))
-      (resp/content-type "text/html")
-      (resp/header "Cache-Control" "no-cache")))
+  "Serves the SPA index.html and ensures session cookie is set.
+   This is critical for Firefox AJAX mode - the session must be established
+   on the initial page load since Sente's async responses can't set cookies."
+  [request]
+  (let [response (-> (resp/response (render-index-html))
+                     (resp/content-type "text/html")
+                     (resp/header "Cache-Control" "no-cache"))]
+    ;; Always set session on index.html response to establish cookie
+    (if (get-in request [:session :uid])
+      response
+      (assoc response :session {:uid (str (random-uuid))}))))
 
 (defn file-handler
   "Serves static files from public and assets directories with cache headers."
