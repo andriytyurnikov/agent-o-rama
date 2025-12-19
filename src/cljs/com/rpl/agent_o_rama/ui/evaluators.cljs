@@ -9,6 +9,8 @@
    [com.rpl.agent-o-rama.ui.queries :as queries]
    [com.rpl.agent-o-rama.ui.sente :as sente]
    [com.rpl.agent-o-rama.ui.forms :as forms]
+   [com.rpl.agent-o-rama.ui.components.json-path-preview :refer [ExpressionPreview]]
+   [com.rpl.agent-o-rama.ui.rules-forms :refer [DatasetCombobox]]
    [clojure.string :as str]))
 
 ;; =============================================================================
@@ -45,8 +47,8 @@
           ($ DetailItem {:label "Builder"} ($ :code.font-mono.bg-gray-100.px-2.py-1.rounded builder-name))
           ($ DetailItem {:label "Type"}
              ($ :span.inline-flex.px-2.py-0.5.rounded-full.text-xs.font-medium
-                {:className (get-evaluator-type-badge-style type)}
-                (get-evaluator-type-display type)))
+                {:className (common/get-evaluator-type-badge-style type)}
+                (common/get-evaluator-type-display type)))
 
           (when (seq builder-params)
             ($ DetailItem {:label "Parameters"}
@@ -90,20 +92,8 @@
                                         "Learn more on Wikipedia."))}))
 
 ;; =============================================================================
-
-(defn get-evaluator-type-badge-style [type]
-  (case type
-    :regular "bg-green-100 text-green-800"
-    :comparative "bg-blue-100 text-blue-800"
-    :summary "bg-purple-100 text-purple-800"
-    "bg-gray-100 text-gray-800"))
-
-(defn get-evaluator-type-display [type]
-  (case type
-    :regular "Regular"
-    :comparative "Comparative"
-    :summary "Summary"
-    (str type)))
+;; Note: get-evaluator-type-badge-style and get-evaluator-type-display
+;; moved to common.cljs to avoid circular dependencies
 
 ;; =============================================================================
 ;; CREATE EVALUATOR MODAL COMPONENTS
@@ -136,20 +126,23 @@
                      ($ :div.flex.justify-between.items-start.mb-2
                         ($ :h3.font-medium.text-gray-900 (str builder-name))
                         ($ :span.inline-flex.px-2.py-1.text-xs.font-medium.rounded-full
-                           {:className (get-evaluator-type-badge-style type)}
-                           (get-evaluator-type-display type)))
+                           {:className (common/get-evaluator-type-badge-style type)}
+                           (common/get-evaluator-type-display type)))
                      ($ :p.text-sm.text-gray-600 (str description)))))))))))
 
 (defui CreateEvaluatorForm [{:keys [form-id]}]
   (let [form-state (forms/use-form form-id)
-        {:keys [set-field! field-errors selected-builder params input-json-path output-json-path reference-output-json-path]} form-state
+        {:keys [set-field! field-errors selected-builder params input-json-path output-json-path reference-output-json-path module-id]} form-state
         name-field (forms/use-form-field form-id :name)
         description-field (forms/use-form-field form-id :description)
         builder-params (get-in selected-builder [:spec :options :params] {})
         builder-options (get-in selected-builder [:spec :options] {})
         show-input-path? (get builder-options :input-path? true)
         show-output-path? (get builder-options :output-path? true)
-        show-ref-output-path? (get builder-options :reference-output-path? true)]
+        show-ref-output-path? (get builder-options :reference-output-path? true)
+
+        ;; Shared state for preview dataset selection
+        [preview-dataset set-preview-dataset] (uix/use-state nil)]
 
     ($ forms/form
        ($ forms/form-field {:label "Name"
@@ -191,22 +184,56 @@
        (when (or show-input-path? show-output-path? show-ref-output-path?)
          ($ :div.mt-6.pt-4.border-t
             ($ :h3.text-lg.font-medium.text-gray-900.mb-4 "JSONPath Configuration")
-            ($ :div.space-y-4
+
+            ;; Shared dataset selector for all previews
+            ($ :div.mb-4.p-3.bg-gray-50.rounded-lg
+               ($ :label.block.text-xs.font-medium.text-gray-700.mb-2 "Preview on example from dataset")
+               ($ DatasetCombobox {:module-id module-id
+                                   :value preview-dataset
+                                   :on-change set-preview-dataset
+                                   :hide-label? true}))
+
+            ($ :div.space-y-6
                (when show-input-path?
-                 ($ forms/form-field {:label ($ :div.flex.items-center.gap-2 "Input JSON Path" ($ JsonPathTooltip))
-                                      :value input-json-path
-                                      :on-change #(set-field! [:input-json-path] %)
-                                      :error (:input-json-path field-errors)}))
-               (when show-output-path?
-                 ($ forms/form-field {:label ($ :div.flex.items-center.gap-2 "Output JSON Path" ($ JsonPathTooltip))
-                                      :value output-json-path
-                                      :on-change #(set-field! [:output-json-path] %)
-                                      :error (:output-json-path field-errors)}))
+                 ($ :div
+                    ($ forms/form-field {:label ($ :div.flex.items-center.gap-2 "Input JSON Path" ($ JsonPathTooltip))
+                                         :value input-json-path
+                                         :on-change #(set-field! [:input-json-path] %)
+                                         :error (:input-json-path field-errors)})
+                    (when (and preview-dataset (not (str/blank? input-json-path)))
+                      ($ :div.ml-2.mt-2.p-2.bg-blue-50.rounded.border.border-blue-100
+                         {:data-testid "input-path-preview-container"}
+                         ($ :div.text-xs.font-medium.text-blue-700.mb-1 "Preview:")
+                         ($ ExpressionPreview {:module-id module-id
+                                               :dataset-id preview-dataset
+                                               :expression input-json-path
+                                               :type :path
+                                               :source-field :input
+                                               :data-testid "input-path-preview"})))))
+
                (when show-ref-output-path?
-                 ($ forms/form-field {:label ($ :div.flex.items-center.gap-2 "Reference Output JSON Path" ($ JsonPathTooltip))
-                                      :value reference-output-json-path
-                                      :on-change #(set-field! [:reference-output-json-path] %)
-                                      :error (:reference-output-json-path field-errors)}))))))))
+                 ($ :div
+                    ($ forms/form-field {:label ($ :div.flex.items-center.gap-2 "Reference Output JSON Path" ($ JsonPathTooltip))
+                                         :value reference-output-json-path
+                                         :on-change #(set-field! [:reference-output-json-path] %)
+                                         :error (:reference-output-json-path field-errors)})
+                    (when (and preview-dataset (not (str/blank? reference-output-json-path)))
+                      ($ :div.ml-2.mt-2.p-2.bg-blue-50.rounded.border.border-blue-100
+                         {:data-testid "ref-output-path-preview-container"}
+                         ($ :div.text-xs.font-medium.text-blue-700.mb-1 "Preview:")
+                         ($ ExpressionPreview {:module-id module-id
+                                               :dataset-id preview-dataset
+                                               :expression reference-output-json-path
+                                               :type :path
+                                               :source-field :reference-output
+                                               :data-testid "ref-output-path-preview"})))))
+
+               (when show-output-path?
+                 ($ :div
+                    ($ forms/form-field {:label ($ :div.flex.items-center.gap-2 "Output JSON Path" ($ JsonPathTooltip))
+                                         :value output-json-path
+                                         :on-change #(set-field! [:output-json-path] %)
+                                         :error (:output-json-path field-errors)})))))))))
 
 (forms/reg-form
  :create-evaluator
@@ -398,8 +425,8 @@
             ($ :div.p-3.bg-gray-100.rounded-md.border.border-gray-300
                ($ :span.font-medium (:name pre-selected-evaluator))
                ($ :span.ml-2.inline-flex.items-center.px-2.py-0.5.rounded-full.text-xs.font-medium
-                  {:className (get-evaluator-type-badge-style (:type pre-selected-evaluator))}
-                  (get-evaluator-type-display (:type pre-selected-evaluator))))
+                  {:className (common/get-evaluator-type-badge-style (:type pre-selected-evaluator))}
+                  (common/get-evaluator-type-display (:type pre-selected-evaluator))))
 
             loading? ($ :div.text-sm.text-gray-500 "Loading evaluators...")
             error ($ :div.text-sm.text-red-600 "Error loading evaluators")
@@ -420,8 +447,8 @@
                                                 :on-select #(do (set-selected-evaluator evaluator) (set-dropdown-open false))
                                                 :extra-content ($ :div.px-4.pb-2.text-xs.text-gray-500
                                                                   ($ :span.inline-flex.items-center.px-2.py-0.5.rounded-full.text-xs.font-medium
-                                                                     {:className (get-evaluator-type-badge-style (:type evaluator))}
-                                                                     (get-evaluator-type-display (:type evaluator))))}))))))))
+                                                                     {:className (common/get-evaluator-type-badge-style (:type evaluator))}
+                                                                     (common/get-evaluator-type-display (:type evaluator))))}))))))))
 
        ;; 2. Example Input (conditionally rendered) - only for single mode
        (when (and (= mode :single) show-input-path?)
@@ -664,8 +691,8 @@
                                   ($ :code.font-mono.text-xs.text-gray-600 builder-name))
                                ($ :td {:className (:td common/table-classes)}
                                   ($ :span.inline-flex.px-2.py-0.5.rounded-full.text-xs.font-medium
-                                     {:className (get-evaluator-type-badge-style type)}
-                                     (get-evaluator-type-display type)))
+                                     {:className (common/get-evaluator-type-badge-style type)}
+                                     (common/get-evaluator-type-display type)))
                                ($ :td {:className (:td-right common/table-classes)}
                                   ($ :button.inline-flex.items-center.px-2.py-1.text-xs.text-gray-500.hover:text-red-700.cursor-pointer
                                      {:onClick (fn [e]

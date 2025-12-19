@@ -144,40 +144,72 @@
        "elk.layered.spacing.nodeNodeBetweenLayers" "100"
        "elk.spacing.nodeNode" "80"
        "elk.direction" "DOWN"
-       "feedbackEdges" "true"
-       "edgeRouting" "POLYLINE"
+       "elk.edgeRouting" "SPLINES"
        "spacing.edgeEdgeBetweenLayers" "100"
-       "crossingMinimization.strategy" "LAYER_SWEEP"
-       "nodePlacement.strategy" "BRANDES_KOEPF"})
+       "elk.layered.crossingMinimization.semiInteractive" "true"
+       "elk.layered.nodePlacement.strategy" "NETWORK_SIMPLEX"
+       "elk.layered.considerModelOrder.strategy" "PREFER_EDGES"
+       "elk.layered.considerModelOrder.noModelOrder" "false"})
 
 (defn extract-graph-elements [{:keys [graph]}]
   "Extract nodes, edges, and start node from graph data without layout"
   (let [start-id (:start-node graph)
-        ;; Build nodes with extra metadata for coloring (node-type and start?)
-        nodes (->> (get graph :node-map)
-                   (map (fn [[k v]]
-                          {:id k
-                           :type "custom"
-                           :draggable false
-                           :data {:label k
-                                  :node-id k
-                                  :node-type (:node-type v)
-                                  :is-start? (= k start-id)}
-                           :width 170
-                           :height 40})))
+        dummy-id "__dummy_start__"
 
-        edges (s/select
-               [:node-map
-                s/ALL
-                (s/collect-one s/FIRST)
-                s/LAST
-                :output-nodes
-                s/ALL]
-               graph)]
+        ;; Create a dummy node that will be at the very top
+        dummy-node {:id dummy-id
+                    :type "custom"
+                    :draggable false
+                    :data {:label ""
+                           :node-id dummy-id
+                           :node-type :dummy
+                           :is-start? false
+                           :is-dummy? true}
+                    :width 170
+                    :height 1}  ;; Make it very small
+
+        ;; Build real nodes with extra metadata for coloring (node-type and start?)
+        all-nodes (->> (get graph :node-map)
+                       (map (fn [[k v]]
+                              {:id k
+                               :type "custom"
+                               :draggable false
+                               :data {:label k
+                                      :node-id k
+                                      :node-type (:node-type v)
+                                      :is-start? (= k start-id)}
+                               :width 170
+                               :height 55})))
+
+        ;; Put dummy node FIRST, then sort rest with start node coming before others
+        nodes (concat [dummy-node]
+                      (sort-by (fn [node] (if (= (:id node) start-id) 0 1)) all-nodes))
+
+        real-edges (s/select
+                    [:node-map
+                     s/ALL
+                     (s/collect-one s/FIRST)
+                     s/LAST
+                     :output-nodes
+                     s/ALL]
+                    graph)
+
+        ;; Add edge from dummy to start node
+        dummy-edge {:id (str dummy-id "-" start-id)
+                    :source dummy-id
+                    :target start-id
+                    :markerEnd {:type "arrowclosed" :width 20 :height 20}}
+
+        real-edges-formatted (for [[frm to] real-edges]
+                               {:id (str frm "-" to)
+                                :source frm
+                                :target to
+                                :markerEnd {:type "arrowclosed" :width 20 :height 20}})
+
+        all-edges (concat [dummy-edge] real-edges-formatted)]
+
     {:nodes nodes
-     :edges (for [[frm to] edges]
-              {:id (str frm "-" to) :source frm :target to
-               :markerEnd {:type "arrowclosed" :width 20 :height 20}})
+     :edges all-edges
      :start-id start-id}))
 
 (defn process-elk-edge [edge]
@@ -217,13 +249,19 @@
                    :layoutOptions options
                    :children (clj->js
                               (map (fn [node]
-                                     (-> node
-                                         (cond-> (= start-id (:id node))
-                                           (assoc :layoutOptions {"elk.layered.layering.layerConstraint" "FIRST"}))
-                                         (assoc :targetPosition (if is-horizontal "left" "top"))
-                                         (assoc :sourcePosition (if is-horizontal "right" "bottom"))
-                                         (assoc :width 170)
-                                         (assoc :height 40)))
+                                     (let [is-dummy? (= "__dummy_start__" (:id node))
+                                           is-start? (= start-id (:id node))]
+                                       (-> node
+                                           (assoc :layoutOptions
+                                                  (if is-dummy?
+                                                    {"elk.layered.layering.layerConstraint" "FIRST"
+                                                     "elk.layered.layering.layerId" "0"}
+                                                    {"elk.layered.layering.layerConstraint" "NONE"
+                                                     "elk.layered.layering.layerId" "1"}))
+                                           (assoc :targetPosition (if is-horizontal "left" "top"))
+                                           (assoc :sourcePosition (if is-horizontal "right" "bottom"))
+                                           (assoc :width 170)
+                                           (assoc :height 55))))
                                    nodes))
                    :edges (clj->js edges)}]
     (-> (.layout elk graph)
@@ -245,7 +283,7 @@
                         :edges layouted-edges})))
         (.catch js/console.error))))
 
-(defui graph-flow [{:keys [initial-data height selected-node set-selected-node]}]
+(defui graph-flow [{:keys [initial-data height selected-node set-selected-node node-stats selected-stat]}]
   (let [;; Extract initial nodes and edges
         {:keys [nodes edges start-id]} (extract-graph-elements initial-data)
 
@@ -296,35 +334,72 @@
                                         label (:label data)
                                         node-id (:node-id data)
                                         node-type (:node-type data)
-                                        selected (= (when selected-node (aget selected-node "id")) id)
-                                        base-classes (cond
-                                                       (= "agg-start-node" node-type)
-                                                       ["bg-green-500" "text-white" "border-2" "border-green-600"]
-                                                       (= "agg-node" node-type)
-                                                       ["bg-yellow-500" "text-white" "border-2" "border-yellow-600"]
-                                                       :else
-                                                       ["bg-white" "text-gray-800" "border-2" "border-gray-300"])
-                                        selection-classes (if selected
-                                                            ["ring-4" "ring-blue-400" "ring-opacity-75" "shadow-2xl" "transform" "scale-105"]
-                                                            ["shadow-lg"])
-                                        common-classes ["p-3" "rounded-md" "transition-all" "duration-200"]
-                                        node-className (str/join " " (concat base-classes selection-classes common-classes))]
-                                    ($ :div {:className "relative"}
-                                       ($ :div {:className node-className
-                                                :style {:width "170px" :height "40px"}
-                                                :data-id (str "agent-graph-node-" node-id)}
-                                          ($ :div {:className "truncate" :title label}
-                                             label))
-                                       ($ Handle {:type "target" :position "top" :style {:display "none"}})
-                                       ($ Handle {:type "source" :position "bottom" :style {:display "none"}})))))})
+                                        is-dummy? (:is-dummy? data)
+                                        selected (= (when selected-node (aget selected-node "id")) id)]
+
+                                    ;; If it's a dummy node, render it invisibly
+                                    (if is-dummy?
+                                      ($ :div {:style {:width "1px" :height "1px" :opacity 0}}
+                                         ($ Handle {:type "target" :position "top" :style {:display "none"}})
+                                         ($ Handle {:type "source" :position "bottom" :style {:display "none"}}))
+
+                                      ;; Regular node rendering
+                                      (let [;; Get stats for this node
+                                            stats (when node-stats (get node-stats node-id))
+                                            stat-value (when stats (get stats selected-stat))
+                                            ;; Convert stat key to readable label
+                                            stat-label (cond
+                                                         (= selected-stat :mean) "mean"
+                                                         (= selected-stat :min) "min"
+                                                         (= selected-stat :max) "max"
+                                                         (= selected-stat :count) "count"
+                                                         (= selected-stat 0.25) "P25"
+                                                         (= selected-stat 0.5) "P50"
+                                                         (= selected-stat 0.75) "P75"
+                                                         (= selected-stat 0.9) "P90"
+                                                         (= selected-stat 0.99) "P99"
+                                                         :else "")
+                                            stat-display (when stat-value
+                                                           (if (= selected-stat :count)
+                                                             (str stat-value " " stat-label)
+                                                             (str (int stat-value) "ms " stat-label)))
+
+                                            base-classes (cond
+                                                           (= "agg-start-node" node-type)
+                                                           ["bg-green-500" "text-white" "border-2" "border-green-600"]
+                                                           (= "agg-node" node-type)
+                                                           ["bg-yellow-500" "text-white" "border-2" "border-yellow-600"]
+                                                           :else
+                                                           ["bg-white" "text-gray-800" "border-2" "border-gray-300"])
+                                            selection-classes (if selected
+                                                                ["ring-4" "ring-blue-400" "ring-opacity-75" "shadow-2xl" "transform" "scale-105"]
+                                                                ["shadow-lg"])
+                                            common-classes ["p-2" "rounded-md" "transition-all" "duration-200"]
+                                            node-className (str/join " " (concat base-classes selection-classes common-classes))]
+                                        ($ :div {:className "relative"}
+                                           ($ :div {:className node-className
+                                                    :style {:width "170px" :height "55px"}
+                                                    :data-id (str "agent-graph-node-" node-id)}
+                                              ($ :div {:className "truncate text-sm font-medium" :title label}
+                                                 label)
+                                              (if stat-display
+                                                ($ :div {:className "text-xs text-gray-600 mt-1 font-mono"}
+                                                   stat-display)
+                                                (when (and node-stats (not stats))  ; Node exists but has no stats
+                                                  ($ :div {:className "text-xs text-gray-400 mt-1 italic"}
+                                                     "No data"))))
+                                           ($ Handle {:type "target" :position "top" :style {:display "none"}})
+                                           ($ Handle {:type "source" :position "bottom" :style {:display "none"}})))))))})
                      :edgeTypes
                      (clj->js {"elk-edge" (uix.core/as-react elk-edge-component)})
-                     :defaultEdgeOptions {:style {:strokeWidth 2 :stroke "#a5b4fc"}
-                                          :markerEnd {:type "arrowclosed" :width 20 :height 20}}
-                     :onNodeClick (fn [_ node]
-                                    (if (and selected-node (= (aget node "id") (aget selected-node "id")))
-                                      (set-selected-node nil)
-                                      (set-selected-node node)))}
+                     :defaultEdgeOptions
+                     {:style {:strokeWidth 2 :stroke "#a5b4fc"}
+                      :markerEnd {:type "arrowclosed" :width 20 :height 20}}
+                     :onNodeClick
+                     (fn [_ node]
+                       (if (and selected-node (= (aget node "id") (aget selected-node "id")))
+                         (set-selected-node nil)
+                         (set-selected-node node)))}
           ($ Background {:variant "dots" :gap 12 :size 1 :color "#e0e0e0"})
           ($ Controls {:className "fill-gray-500 stroke-gray-500"})))))
 

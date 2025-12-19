@@ -2,6 +2,8 @@
   (:use [com.rpl.rama] [com.rpl.rama.path])
   (:require
    [com.rpl.agent-o-rama :as aor]
+   [com.rpl.agent-o-rama.impl.analytics :as ana]
+   [com.rpl.agent-o-rama.impl.pobjects :as po]
    [com.rpl.agent-o-rama.impl.stats :as stats]
    [com.rpl.agent-o-rama.impl.types :as aor-types]
    [com.rpl.agent-o-rama.impl.ui.handlers.common :as common]
@@ -27,7 +29,8 @@
 
 (defmethod com.rpl.agent-o-rama.impl.ui.sente/-event-msg-handler :invocations/get-graph-page
   [{:keys [client invoke-pair]} _uid]
-  (when client
+  (if-not client
+    (throw (ex-info "No client available - module or agent may not be loaded" {:invoke-pair invoke-pair}))
     (let [;; Get all underlying objects from the agent-specific client
           client-objects (aor-types/underlying-objects client)
           tracing-query (:tracing-query client-objects)
@@ -127,10 +130,11 @@
 
 (defmethod com.rpl.agent-o-rama.impl.ui.sente/-event-msg-handler :invocations/get-graph
   [{:keys [client]} uid]
-  (when client
+  (if client
     {:graph (foreign-invoke-query
              (:current-graph-query
-              (aor-types/underlying-objects client)))}))
+              (aor-types/underlying-objects client)))}
+    {:graph nil}))
 
 (defmethod com.rpl.agent-o-rama.impl.ui.sente/-event-msg-handler :invocations/set-metadata
   [{:keys [client invoke-id key value-str]} uid]
@@ -151,3 +155,78 @@
         invoke (aor-types/->AgentInvokeImpl task-id agent-id)]
     (aor/remove-metadata! client invoke key)
     {:success true}))
+
+(defmethod com.rpl.agent-o-rama.impl.ui.sente/-event-msg-handler :invocations/get-node-stats
+  [{:keys [client agent-name granularity]} uid]
+  (when client
+    (let [client-objects (aor-types/underlying-objects client)
+          telemetry-pstate (:telemetry-pstate client-objects)
+
+          ;; Default to hour granularity if not specified
+          gran-seconds (or granularity po/HOUR-GRANULARITY)
+
+          ;; Calculate time window: look back 3 buckets from now
+          now-millis (System/currentTimeMillis)
+          bucket-size-millis (* gran-seconds 1000)
+          lookback-millis (* 3 bucket-size-millis)
+          start-time-millis (- now-millis lookback-millis)
+          ;; sorted-map-range is exclusive of end, so add one bucket to include current bucket
+          end-time-millis (+ now-millis bucket-size-millis)
+
+          ;; Query telemetry for node latencies with all percentiles
+          telemetry-data (ana/select-telemetry
+                          telemetry-pstate
+                          agent-name
+                          gran-seconds
+                          [:agent :node-latencies]
+                          start-time-millis
+                          end-time-millis
+                          [:mean :count :min :max 0.25 0.5 0.75 0.9 0.99]
+                          nil)]
+
+      ;; Aggregate last 2 buckets to avoid data gaps at bucket transitions
+      ;; E.g., at 10:01, hour bucket has only 1 min of data; previous bucket has full hour
+      (let [current-bucket (quot now-millis bucket-size-millis)
+            prev-bucket (dec current-bucket)
+
+            ;; Get data for the 2 most recent bucket numbers (not just last 2 with data)
+            current-bucket-data (get telemetry-data current-bucket)
+            prev-bucket-data (get telemetry-data prev-bucket)
+
+            ;; Merge stats from 2 buckets for each node
+            merge-node-stats
+            (fn [curr-stats prev-stats]
+              (cond
+                ;; Both buckets have data for this node - aggregate
+                (and curr-stats prev-stats)
+                (let [total-count (+ (:count curr-stats) (:count prev-stats))
+                      total-latency (+ (* (:mean curr-stats) (:count curr-stats))
+                                       (* (:mean prev-stats) (:count prev-stats)))]
+                  {:count total-count
+                   :mean (/ total-latency total-count)
+                   :min (min (:min curr-stats) (:min prev-stats))
+                   :max (max (:max curr-stats) (:max prev-stats))
+                   0.5 (max (get curr-stats 0.5 0) (get prev-stats 0.5 0))
+                   0.9 (max (get curr-stats 0.9 0) (get prev-stats 0.9 0))
+                   0.99 (max (get curr-stats 0.99 0) (get prev-stats 0.99 0))})
+
+                ;; Only one bucket has data - use it
+                curr-stats curr-stats
+                prev-stats prev-stats
+                :else nil))
+
+            ;; Get all unique node names
+            all-nodes (set (concat (keys current-bucket-data) (keys prev-bucket-data)))
+
+            ;; Merge stats for each node
+            aggregated-stats
+            (into {}
+                  (keep (fn [node-name]
+                          (when-let [merged (merge-node-stats
+                                             (get current-bucket-data node-name)
+                                             (get prev-bucket-data node-name))]
+                            [node-name merged]))
+                        all-nodes))]
+
+        {:node-stats aggregated-stats
+         :granularity gran-seconds}))))
