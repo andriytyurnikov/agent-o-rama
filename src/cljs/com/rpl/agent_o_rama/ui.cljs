@@ -242,12 +242,12 @@
     ($ :div {:className (common/cn
                          "h-screen flex flex-col bg-gray-100 transition-all duration-300"
                          {"w-16" collapsed?, "w-64" (not collapsed?)})}
-       ;; Header (no changes here)
+       ;; Header
        ($ :div.flex.items-center.justify-between.p-4.border-b.border-gray-200.overflow-hidden
           (when-not collapsed?
-            ($ :img {:src "/logo-black.png"
-                     :alt "Agent-O-Rama"
-                     :className "h-8 max-w-48 object-contain"}))
+            ($ :div.flex.items-center.gap-2
+               ($ :span.text-xl.font-bold.text-indigo-600 "Alma")
+               ($ :span.text-xl.font-light.text-gray-600 "Mater")))
 
           ($ :button {:onClick toggle-collapsed
                       :className "p-2 rounded-md hover:bg-gray-200 transition-colors"
