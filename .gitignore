@@ -41,7 +41,9 @@ CLAUDE.md
 # clojure-mcp
 .clojure-mcp/code_index.txt
 
-# clj-kondo hooks (exception to global gitignore)
+# clj-kondo and clojure-lsp
+.clj-kondo/
+.lsp/
 !.clj-kondo/hooks/
 
 # playwright
