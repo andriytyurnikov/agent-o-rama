@@ -42,9 +42,9 @@ CLAUDE.md
 .clojure-mcp/code_index.txt
 
 # clj-kondo and clojure-lsp
-.clj-kondo/
-.lsp/
-!.clj-kondo/hooks/
+.clj-kondo/.cache/
+.clj-kondo/imports/
+.lsp/.cache/
 
 # playwright
 test-results/
