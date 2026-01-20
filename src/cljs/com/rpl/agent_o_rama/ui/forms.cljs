@@ -72,13 +72,15 @@
    - :class-name - Additional CSS classes
    - :rows - For textarea, number of rows"
   [{:keys [label value on-change error required? placeholder class-name
-           type rows data-id]
+           type rows data-id data-testid disabled]
     :or {type :text rows 3}}]
 
   (let [input-classes (str "w-full p-3 border rounded-md text-sm transition-colors "
-                           (if error
-                             "border-red-300 focus:ring-red-500 focus:border-red-500"
-                             "border-gray-300 focus:ring-blue-500 focus:border-blue-500")
+                           (if disabled
+                             "bg-gray-100 text-gray-500 cursor-not-allowed border-gray-200"
+                             (if error
+                               "border-red-300 focus:ring-red-500 focus:border-red-500"
+                               "border-gray-300 focus:ring-blue-500 focus:border-blue-500"))
                            (when class-name (str " " class-name)))
 
         field-id (str "field-" (random-uuid))]
@@ -98,7 +100,9 @@
                      :placeholder placeholder
                      :rows rows
                      :onChange #(on-change (.. % -target -value))}
-              data-id (assoc :data-id data-id)))
+              data-id (assoc :data-id data-id)
+              data-testid (assoc :data-testid data-testid)
+              disabled (assoc :disabled true)))
 
          ;; Default to text input for all other types
          ($ :input
@@ -108,7 +112,9 @@
                      :value (or value "")
                      :placeholder placeholder
                      :onChange #(on-change (.. % -target -value))}
-              data-id (assoc :data-id data-id))))
+              data-id (assoc :data-id data-id)
+              data-testid (assoc :data-testid data-testid)
+              disabled (assoc :disabled true))))
 
        (if error
          ($ :p.text-sm.text-red-600.mt-1 error)
@@ -244,45 +250,68 @@
                   (:component data)))))
        (.-body js/document)))))
 
-(defn required [value] (when (str/blank? value) "This field is required"))
+(defn required
+  "Validator for required fields."
+  ([value]
+   (when (str/blank? value) "This field is required"))
+  ([value _field-data]
+   (when (str/blank? value) "This field is required")))
 
 (defn min-length
   "Validator for minimum string length"
   [n]
-  (fn [value]
-    (when (and (string? value) (< (count value) n))
-      (str "Must be at least " n " characters long"))))
+  (fn
+    ([value]
+     (when (and (string? value) (< (count value) n))
+       (str "Must be at least " n " characters long")))
+    ([value _field-data]
+     (when (and (string? value) (< (count value) n))
+       (str "Must be at least " n " characters long")))))
 
 (defn max-length
   "Validator for maximum string length"
   [n]
-  (fn [value]
-    (when (and (string? value) (> (count value) n))
-      (str "Must be no more than " n " characters long"))))
+  (fn
+    ([value]
+     (when (and (string? value) (> (count value) n))
+       (str "Must be no more than " n " characters long")))
+    ([value _field-data]
+     (when (and (string? value) (> (count value) n))
+       (str "Must be no more than " n " characters long")))))
 
 (defn valid-json
-  "Validator for JSON strings"
-  [value]
-  (when-not (str/blank? value)
-    (try
-      (js/JSON.parse value)
-      nil ; Valid JSON
-      (catch js/Error e
-        (str "Invalid JSON: " (.-message e))))))
+  "Validator for JSON strings."
+  ([value]
+   (when-not (str/blank? value)
+     (try
+       (js/JSON.parse value)
+       nil ; Valid JSON
+       (catch js/Error e
+         (str "Invalid JSON: " (.-message e))))))
+  ([value _field-data]
+   (when-not (str/blank? value)
+     (try
+       (js/JSON.parse value)
+       nil ; Valid JSON
+       (catch js/Error e
+         (str "Invalid JSON: " (.-message e)))))))
 
 (defn- validate-form-fields
   "Validate fields against validators keyed by Specter paths.
    Returns a map {:valid? boolean :errors {nested-error-map}}
 
    The form-state contains both field data and metadata. We need to extract
-   only the field data for validation by excluding known metadata keys."
+   only the field data for validation by excluding known metadata keys.
+   
+   Validators receive both the field value and the full field-data for cross-field validation."
   [form-state validators]
   (let [metadata-keys #{:field-errors :valid? :submitting? :error :current-step :steps :set-field! :next-step! :prev-step! :submit!}
         field-data (apply dissoc form-state metadata-keys)]
     (reduce-kv
      (fn [acc path validator-fns]
        (let [value (s/select-one path field-data)
-             first-error (some #(% value) validator-fns)]
+             ;; Pass both value and field-data to validator functions
+             first-error (some #(% value field-data) validator-fns)]
          (if first-error
            (-> acc
                (assoc :valid? false)

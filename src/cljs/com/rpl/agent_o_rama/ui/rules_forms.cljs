@@ -8,6 +8,7 @@
    [com.rpl.agent-o-rama.ui.queries :as queries]
    [com.rpl.agent-o-rama.ui.common :as common]
    [com.rpl.agent-o-rama.ui.selectors :as selectors]
+   [com.rpl.agent-o-rama.ui.searchable-selector :as ss]
    [clojure.string :as str]
    ["use-debounce" :refer [useDebounce]]
    ["@heroicons/react/24/outline" :refer [XMarkIcon]]))
@@ -19,6 +20,7 @@
     "aor/eval" "Online evaluation"
     "aor/add-to-dataset" "Add to dataset"
     "aor/webhook" "Webhook"
+    "aor/add-to-human-feedback-queue" "Add to human feedback queue"
     action-id))
 
 (defn compute-start-time-millis
@@ -115,157 +117,6 @@
 
        ($ :div.mt-1.h-5))))
 
-(defui DatasetCombobox
-  "Autocomplete combobox for selecting a dataset by ID.
-
-  Props:
-  - :module-id - The module ID to fetch datasets from
-  - :value - Current dataset ID value
-  - :on-change - Callback when selection changes
-  - :error - Error message to display
-  - :required? - Whether field is required
-  - :hide-label? - If true, hides the 'Dataset ID' label"
-  [{:keys [module-id value on-change error required? hide-label?]}]
-  (let [[search-term set-search-term!] (uix/use-state "")
-        [debounced-search] (useDebounce search-term 300)
-        [is-open? set-open!] (uix/use-state false)
-        [highlighted-idx set-highlighted-idx!] (uix/use-state 0)
-        input-ref (uix/use-ref nil)
-
-        ;; Fetch datasets with search filter
-        {:keys [data loading? error refetch]}
-        (queries/use-sente-query
-         {:query-key [:dataset-selector module-id debounced-search]
-          :sente-event [:datasets/get-all
-                        {:module-id module-id
-                         :filters {:search-string debounced-search}}]
-          :enabled? is-open?
-          :refetch-on-mount true})
-
-        datasets (or (:datasets data) [])
-
-        ;; Find the currently selected dataset name
-        selected-dataset (when value
-                           (first (filter #(= (str (:dataset-id %)) value) datasets)))
-        display-value (or (:name selected-dataset) value "")
-
-        input-classes (str "w-full p-2 border rounded-md text-sm transition-colors "
-                           (if error
-                             "border-red-300 focus:ring-red-500 focus:border-red-500"
-                             "border-gray-300 focus:ring-blue-500 focus:border-blue-500"))
-
-        ;; Event handlers
-        handle-input-change (fn [e]
-                              (let [v (.. e -target -value)]
-                                (set-search-term! v)
-                                (set-open! true)
-                                (set-highlighted-idx! 0)))
-
-        handle-select (fn [dataset]
-                        (on-change (str (:dataset-id dataset)))
-                        (set-search-term! (:name dataset))
-                        (set-open! false))
-
-        handle-clear (fn []
-                       (on-change nil)
-                       (set-search-term! "")
-                       (set-open! false))
-
-        handle-input-focus (fn []
-                             (set-open! true)
-                             (when (str/blank? search-term)
-                               (set-search-term! "")))
-
-        handle-input-blur (fn []
-                           ;; Delay to allow click on dropdown item
-                            (js/setTimeout #(set-open! false) 200))
-
-        handle-keydown (fn [e]
-                         (when is-open?
-                           (case (.-key e)
-                             "ArrowDown" (do (.preventDefault e)
-                                             (set-highlighted-idx!
-                                              #(min (dec (count datasets)) (inc %))))
-                             "ArrowUp" (do (.preventDefault e)
-                                           (set-highlighted-idx!
-                                            #(max 0 (dec %))))
-                             "Enter" (do (.preventDefault e)
-                                         (when (< highlighted-idx (count datasets))
-                                           (handle-select (nth datasets highlighted-idx))))
-                             "Escape" (do (.preventDefault e)
-                                          (set-open! false))
-                             nil)))]
-
-    ;; Reset search term when value changes externally
-    (uix/use-effect
-     (fn []
-       (when (and value (not= search-term display-value))
-         (set-search-term! display-value))
-       js/undefined)
-     [value display-value search-term])
-
-    ;; Refetch datasets when dropdown opens
-    (uix/use-effect
-     (fn []
-       (when is-open?
-         (refetch))
-       js/undefined)
-     [is-open? refetch])
-
-    ($ :div.relative
-       ($ :div.space-y-1
-          ;; Conditionally render label
-          (when-not hide-label?
-            ($ :label.block.text-sm.font-medium.text-gray-700
-               "Dataset ID"
-               (when required? ($ :span.text-red-500.ml-1 "*"))))
-
-          ;; Input with clear button
-          ($ :div.relative
-             ($ :input {:ref input-ref
-                        :type "text"
-                        :className input-classes
-                        :value search-term
-                        :placeholder "Type to search datasets..."
-                        :onChange handle-input-change
-                        :onFocus handle-input-focus
-                        :onBlur handle-input-blur
-                        :onKeyDown handle-keydown})
-             
-             ;; Clear button (X) when dataset is selected
-             (when (and value (not (str/blank? value)))
-               ($ :button
-                  {:type "button"
-                   :className "absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"
-                   :onClick handle-clear
-                   :onMouseDown #(.preventDefault %)} ; Prevent input blur
-                  ($ XMarkIcon {:className "h-4 w-4"}))))
-
-          (if error
-            ($ :p.text-sm.text-red-600.mt-1 error)
-            ($ :div.mt-1.h-5)))
-
-       ;; Dropdown list
-       (when is-open?
-         ($ :div.absolute.z-50.w-full.mt-1.bg-white.border.border-gray-300.rounded-md.shadow-lg.max-h-60.overflow-y-auto
-            (if loading?
-              ($ :div.p-4.text-center.text-gray-500.flex.items-center.justify-center
-                 ($ common/spinner {:size :medium})
-                 ($ :span.ml-2 "Loading datasets..."))
-
-              (if (empty? datasets)
-                ($ :div.p-4.text-center.text-gray-500
-                   "No datasets found")
-
-                (for [[idx dataset] (map-indexed vector datasets)]
-                  ($ :div {:key (str (:dataset-id dataset))
-                           :className (str "p-3 cursor-pointer hover:bg-blue-50 "
-                                           (when (= idx highlighted-idx) "bg-blue-100"))
-                           :onMouseEnter #(set-highlighted-idx! idx)
-                           :onClick #(handle-select dataset)}
-                     ($ :div.font-medium.text-sm (:name dataset))
-                     ($ :div.text-xs.text-gray-500 (str (:dataset-id dataset))))))))))))
-
 (defui ParamField
   [{:keys [form-id param-name param-info action-name module-id data-id]}]
   (let [field-path [:action-params param-name]
@@ -275,15 +126,49 @@
         show-description-below? (and (= action-name "aor/eval") description)
         input-classes "w-full p-2 border rounded-md text-sm transition-colors border-gray-300 focus:ring-blue-500 focus:border-blue-500"]
 
-    ;; Use DatasetCombobox for datasetId parameter
-    (if (= param-name "datasetId")
-      ($ DatasetCombobox {:module-id module-id
-                          :value (:value param-field)
-                          :on-change (:on-change param-field)
-                          :error (:error param-field)
-                          :required? required?})
+    (cond
+      ;; Dataset selector for datasetId parameter
+      (= param-name "datasetId")
+      ($ ss/SearchableSelector
+         {:module-id module-id
+          :value (:value param-field)
+          :on-change (:on-change param-field)
+          :sente-event-fn (fn [module-id search-string]
+                            [:datasets/get-all
+                             {:module-id module-id
+                              :filters {:search-string search-string}}])
+          :items-key :datasets
+          :item-id-fn #(str (:dataset-id %))
+          :item-label-fn :name
+          :item-sublabel-fn #(str (:dataset-id %))
+          :placeholder "Type to search datasets..."
+          :label "Dataset ID"
+          :required? required?
+          :error (:error param-field)
+          :data-testid "dataset-selector"})
+
+      ;; Queue selector for queueName parameter
+      (= param-name "queueName")
+      ($ ss/SearchableSelector
+         {:module-id module-id
+          :value (:value param-field)
+          :on-change (:on-change param-field)
+          :sente-event-fn (fn [module-id search-string]
+                            [:human-feedback/get-queues
+                             {:module-id module-id
+                              :filters {:search-string search-string}}])
+          :items-key :items
+          :item-id-fn :name
+          :item-label-fn :name
+          :item-sublabel-fn :description
+          :placeholder "Type to search queues..."
+          :label "Queue Name"
+          :required? required?
+          :error (:error param-field)
+          :data-testid "queue-name-selector"})
 
       ;; Default text input for all other parameters
+      :else
       ($ :div.space-y-1
          ($ :div.flex.items-center.gap-2
             ($ :label.text-sm.font-medium.text-gray-700
@@ -363,7 +248,7 @@
                    :onChange #((:on-change status-filter-field) (keyword (.. % -target -value)))}
           ($ :option {:value "success"} "Success")
           ($ :option {:value "all"} "All")
-          ($ :option {:value "failure"} "Failure"))
+          ($ :option {:value "fail"} "Failure"))
        (if (:error status-filter-field)
          ($ :p.text-sm.text-red-600.mt-1 (:error status-filter-field))
          ($ :div.mt-1.h-5)))))
@@ -525,17 +410,17 @@
                                 (forms/required v)))]
                 :status-filter [forms/required]
                 :sampling-rate [forms/required
-                                (fn [v]
+                                (fn [v _form-state]
                                   (when (or (js/isNaN v) (nil? v))
                                     "Must be a valid number"))
-                                (fn [v]
+                                (fn [v _form-state]
                                   (when (or (< v 0.0) (> v 1.0))
                                     "Must be between 0.0 and 1.0"))]
                 :action-name [forms/required]
                 [:action-params "name"] [(fn [v form-state]
                                            (when (= (:action-name form-state) "aor/eval")
                                              (forms/required v)))]
-                :filter [(fn [filter-val]
+                :filter [(fn [filter-val _form-state]
                            (letfn [(validate-filter [f]
                                      (case (:type f)
                                        :feedback

@@ -113,6 +113,7 @@
    - :query-key - A unique vector key to identify this query's state.
    - :sente-event - The base Sente event vector. Pagination params will be merged into it.
    - :page-size - The number of items to fetch per page.
+   - :initial-pagination - Optional starting pagination cursor (e.g., UUID to start from).
    - :enabled? - Boolean to control if the query should run.
 
    Returns a map with:
@@ -123,7 +124,7 @@
    - :error - Error message if a fetch fails.
    - :loadMore - A function to call to fetch the next page.
    - :refetch - A function to clear all data and start from page 1."
-  [{:keys [query-key sente-event page-size enabled?]
+  [{:keys [query-key sente-event page-size initial-pagination enabled?]
     :or {page-size 20 enabled? true}}]
   (let [state-path (into [:queries] query-key)
         query-state (state/use-sub state-path)
@@ -168,11 +169,11 @@
                                      ;; Check if more pages are available (handles both string and map formats)
                                      new-has-more? (has-more-pages? new-pagination)
                                      current-data (or (get-in @state/app-db (into state-path [:data])) [])]
-                                 ;; Update data in app-db
-                                 (if append?
-                                   (state/dispatch [:db/set-value (into state-path [:data])
-                                                    (vec (concat current-data new-items))])
-                                   (state/dispatch [:db/set-value (into state-path [:data]) new-items]))
+                                ;; Update data in app-db
+                                (if append?
+                                  (state/dispatch [:db/set-value (into state-path [:data])
+                                                   (vec (concat current-data new-items))])
+                                  (state/dispatch [:db/set-value (into state-path [:data]) new-items]))
                                  (state/dispatch [:db/set-value (into state-path [:pagination-params]) new-pagination])
                                  (state/dispatch [:db/set-value (into state-path [:has-more?]) new-has-more?])
                                  ;; Set status to success AFTER data is updated
@@ -225,10 +226,10 @@
      (fn []
        ;; Only fetch if connected, enabled, and we don't have data yet
        (when (and connected? enabled? (empty? data))
-         (fetch-page nil false))
+         (fetch-page initial-pagination false))
        js/undefined)
      ;; Re-run when connection status or enabled changes, or when fetch-page changes
-     [connected? enabled? data fetch-page])
+     [connected? enabled? data fetch-page initial-pagination])
 
     ;; Effect to watch for invalidation flag and auto-refetch
     (uix/use-effect

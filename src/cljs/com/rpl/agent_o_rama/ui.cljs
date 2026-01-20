@@ -21,7 +21,7 @@
    [reitit.coercion :as coercion]
    [reitit.coercion.malli :as malli]
    ["@heroicons/react/24/outline" :refer [HomeIcon CpuChipIcon CircleStackIcon ChevronLeftIcon ChevronRightIcon
-                                          RectangleStackIcon ChartBarIcon BeakerIcon Cog6ToothIcon BoltIcon]]
+                                          RectangleStackIcon ChartBarIcon BeakerIcon Cog6ToothIcon BoltIcon UserIcon QueueListIcon]]
 
    [com.rpl.agent-o-rama.ui.common :as common]
    [com.rpl.agent-o-rama.ui.sente :as sente]
@@ -32,7 +32,8 @@
    [com.rpl.agent-o-rama.ui.experiments.forms]
    [com.rpl.agent-o-rama.ui.datasets.add-from-trace]
    [com.rpl.agent-o-rama.ui.rules :as rules]
-   [com.rpl.agent-o-rama.ui.action-log :as action-log]))
+   [com.rpl.agent-o-rama.ui.action-log :as action-log]
+   [com.rpl.agent-o-rama.ui.human-feedback-queues :as human-feedback-queues]))
 
 (def routes
   [""
@@ -52,12 +53,23 @@
        ["/comparative-experiments" {:name :module/dataset-detail.comparative-experiments, :views [comparative-experiments/index]}]
        ["/comparative-experiments/:experiment-id" {:name :module/dataset-detail.comparative-experiment-detail, :views [comparative-experiments-detail/detail-page]}]]]
      ["/evaluations" {:name :module/evaluations, :views [evaluators/index]}]
+     ["/human-metrics" {:name :module/human-metrics, :views [human-feedback-queues/metrics-index]}]
+     ["/human-feedback-queues"
+      ["" {:name :module/human-feedback-queues, :views [human-feedback-queues/index]}]
+      ["/:queue-id"
+       ["" {:name :module/human-feedback-queue-detail, :views [human-feedback-queues/detail]}]
+       ["/items/:item-id" {:name :module/human-feedback-queue-item, :views [human-feedback-queues/item-detail]}]
+       ["/end" {:name :module/human-feedback-queue-end, :views [human-feedback-queues/queue-end]}]]]
      ["/global-config" {:name :module/global-config, :views [global-config-page/page]}]
      ["/agent/:agent-name"
       ["" {:name :agent/detail, :views [agents/agent]}]
+
       ["/invocations"
        ["" {:name :agent/invocations, :views [agents/invocations]}]
-       ["/:invoke-id" {:name :agent/invocation-detail, :views [agents/invoke]}]]
+       ["/:invoke-id" {:name :agent/invocation-detail
+                       :views [agents/invoke]
+                       :parameters {:query [:map
+                                            [:node {:optional true} :string]]}}]]
       ["/analytics" {:name :agent/analytics
                      :views [analytics/analytics-page]
                      :parameters {:query [:map
@@ -169,6 +181,16 @@
           ($ BeakerIcon {:className "h-5 w-5 flex-shrink-0"})
           (when-not collapsed? ($ :span.ml-3 "Evaluators")))
 
+       ($ nav-link {:href (rfe/href :module/human-metrics {:module-id module-id})
+                    :location location :collapsed? collapsed? :title "Human Metrics"}
+          ($ UserIcon {:className "h-5 w-5 flex-shrink-0"})
+          (when-not collapsed? ($ :span.ml-3 "Human Metrics")))
+
+       ($ nav-link {:href (rfe/href :module/human-feedback-queues {:module-id module-id})
+                    :location location :collapsed? collapsed? :title "Human Feedback Queues"}
+          ($ QueueListIcon {:className "h-5 w-5 flex-shrink-0"})
+          (when-not collapsed? ($ :span.ml-3 "Human Feedback Queues")))
+
        ($ nav-link {:href (rfe/href :module/global-config {:module-id module-id})
                     :location location :collapsed? collapsed? :title "Global Config"}
           ($ Cog6ToothIcon {:className "h-5 w-5 flex-shrink-0"})
@@ -231,8 +253,8 @@
                       :className "p-2 rounded-md hover:bg-gray-200 transition-colors"
                       :title (if collapsed? "Expand sidebar" "Collapse sidebar")}
              (if collapsed?
-               ($ ChevronRightIcon {:className "h-5 w-5"})
-               ($ ChevronLeftIcon {:className "h-5 w-5"}))))
+               ($ ChevronRightIcon {:className "h-5 w-5 cursor-pointer"})
+               ($ ChevronLeftIcon {:className "h-5 w-5 cursor-pointer"}))))
 
        ;; Navigation
        ($ :nav.flex-1.p-3.overflow-y-auto
@@ -258,7 +280,7 @@
 
 (defui breadcrumb []
   (let [match (state/use-sub [:route])
-        {:keys [module-id agent-name dataset-id invoke-id rule-name]} (or (:path-params match) {})
+        {:keys [module-id agent-name dataset-id invoke-id rule-name queue-id item-id]} (or (:path-params match) {})
         route-name (get-in match [:data :name])
 
         ;; Build breadcrumb items based on current route
@@ -302,6 +324,26 @@
                                            "Agent")
                                   :path nil}] ; Current page
 
+                                ;; Queue item detail
+                                (and module-id queue-id item-id)
+                                [{:label (common/url-decode module-id)
+                                  :path (rfe/href :module/detail {:module-id module-id})}
+                                 {:label "Human Feedback Queues"
+                                  :path (rfe/href :module/human-feedback-queues {:module-id module-id})}
+                                 {:label (common/url-decode queue-id)
+                                  :path (rfe/href :module/human-feedback-queue-detail {:module-id module-id :queue-id queue-id})}
+                                 {:label (str "Item " (subs (str item-id) 0 8) "...")
+                                  :path nil}] ; Current page
+
+                                ;; Queue detail
+                                (and module-id queue-id)
+                                [{:label (common/url-decode module-id)
+                                  :path (rfe/href :module/detail {:module-id module-id})}
+                                 {:label "Human Feedback Queues"
+                                  :path (rfe/href :module/human-feedback-queues {:module-id module-id})}
+                                 {:label (common/url-decode queue-id)
+                                  :path nil}] ; Current page
+
                                 ;; Dataset detail
                                 (and module-id dataset-id)
                                 [{:label (common/url-decode module-id)
@@ -318,6 +360,8 @@
                                  {:label (case route-name
                                            :module/datasets "Datasets"
                                            :module/evaluations "Evaluations"
+                                           :module/human-metrics "Human Metrics"
+                                           :module/human-feedback-queues "Human Feedback Queues"
                                            :module/detail "Dashboard"
                                            "Module")
                                   :path nil}] ; Current page

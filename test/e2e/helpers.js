@@ -19,6 +19,30 @@ export async function getBasicAgentRow(page) {
 }
 
 /**
+ * Manually invokes an agent using the UI form.
+ * @param {import('@playwright/test').Page} page - The Playwright page object (must be on agent detail page).
+ * @param {Array} args - The arguments to pass to the agent (will be JSON.stringify'd).
+ * @returns {Promise<string>} The URL of the created invocation.
+ */
+export async function invokeAgentManually(page, args) {
+  console.log('Invoking agent with args:', args);
+  
+  const manualRunForm = page.locator('div').filter({ hasText: /^Manually Run Agent/ });
+  
+  // Fill in the args
+  await manualRunForm.getByPlaceholder(/\[arg1, arg2, arg3, ...\]/).fill(JSON.stringify(args));
+  
+  // Submit
+  await manualRunForm.getByRole('button', { name: 'Submit' }).click();
+  
+  // Wait for navigation to invocation page
+  await expect(page).toHaveURL(/\/invocations\//, { timeout: 30000 });
+  console.log('Navigated to invocation trace page.');
+  
+  return page.url();
+}
+
+/**
  * Gets the agent row for the E2ETestAgent module.
  * @param {import('@playwright/test').Page} page - The Playwright page object.
  * @returns {Promise<import('@playwright/test').Locator>} The agent row locator.
@@ -100,25 +124,18 @@ export async function createEvaluator(page, { name, builderName, description, pa
 /**
  * Adds an example to the currently viewed dataset.
  * @param {import('@playwright/test').Page} page - The Playwright page object.
- * @param {Object} example - An object with `input`, optional `output`, and optional `tags` array.
+ * @param {Object} example - An object with `input`, optional `output`, optional `tags`, and optional `searchText`.
+ * @param {*} example.input - The input value (string or object).
+ * @param {*} [example.output] - The reference output value.
+ * @param {string[]} [example.tags] - Tags to add to the example.
+ * @param {string} [example.searchText] - Text to search for in the Input cell to find the row. 
+ *                                         If not provided, uses exact match on stringified input.
  */
-export async function addExample(page, { input, output, tags }) {
-  console.log('Adding example with input:', JSON.stringify(input), 'tags:', tags);
+export async function addExample(page, { input, output, tags, searchText }) {
+  const inputStr = typeof input === 'string' ? input : JSON.stringify(input);
+  console.log('Adding example with input:', inputStr.substring(0, 50), 'tags:', tags);
   
-  // Step 1: Check if table exists (may not exist if no examples yet)
-  const table = page.locator('table tbody');
-  
-  let rowsBefore = 0;
-  if (await table.isVisible().catch(() => false)) {
-    // Wait for table to be stable before counting
-    await page.waitForTimeout(300);
-    rowsBefore = await page.locator('table tbody tr').count();
-    console.log(`Rows before adding example: ${rowsBefore}`);
-  } else {
-    console.log('No table yet (empty state)');
-  }
-  
-  // Step 2: Create the example
+  // Step 1: Create the example
   await page.locator('button').filter({ hasText: 'Add Example' }).filter({ hasNot: page.locator('[disabled]') }).first().click();
 
   const createModal = page.locator('[role="dialog"]');
@@ -131,29 +148,27 @@ export async function addExample(page, { input, output, tags }) {
   
   await createModal.getByRole('button', { name: 'Add Example' }).click();
   await expect(createModal).not.toBeVisible({ timeout: 15000 });
-
-  // Wait for paginated query to refetch after invalidation
-  await page.waitForTimeout(500);
-
-  // Step 3: Wait for table to appear (if it didn't exist) and new row to be added
+  
+  // Step 2: Wait for table to show the new example
+  const table = page.locator('table tbody');
   await expect(table).toBeVisible({ timeout: 5000 });
   
-  await expect(async () => {
-    const rowsAfter = await page.locator('table tbody tr').count();
-    expect(rowsAfter).toBe(rowsBefore + 1);
-  }).toPass({ timeout: 10000 });
+  // Find the row by targeting the Input cell (2nd column)
+  // Use provided searchText for substring match, or exact match on simple inputs
+  const matchPattern = searchText 
+    ? searchText  // Substring match
+    : new RegExp(`^${inputStr}$`);  // Exact match for simple inputs
   
-  const rowsAfter = await page.locator('table tbody tr').count();
-  console.log(`Rows after adding example: ${rowsAfter}`);
+  const newRow = page.locator('table tbody tr').filter({ 
+    has: page.locator('td').nth(1).filter({ hasText: matchPattern })
+  });
+  await expect(newRow.first()).toBeVisible({ timeout: 10000 });
+  console.log(`Verified example appears in table`);
 
-  // Step 4: Target the newly added row (last row)
-  const newRow = page.locator('table tbody tr').nth(rowsAfter - 1);
-  await expect(newRow).toBeVisible();
-
-  // Step 5: If tags are provided, edit the example to add them
+  // Step 3: If tags are provided, edit the example to add them
   if (tags && tags.length > 0) {
     // Click the newly added row
-    await newRow.click();
+    await newRow.first().click();
 
     const editModal = page.locator('[role="dialog"]');
     await expect(editModal).toBeVisible();
@@ -172,8 +187,8 @@ export async function addExample(page, { input, output, tags }) {
       await expect(tagRow).toBeVisible();
     }
 
-    const closeButton = editModal.getByRole('button', { name: '×' })
-    closeButton.click();
+    const closeButton = editModal.getByRole('button', { name: '×' });
+    await closeButton.click();
     await expect(editModal).not.toBeVisible({ timeout: 15000 });
     console.log('Successfully added tags to example.');
   }
@@ -244,11 +259,24 @@ export async function deleteDataset(page, name) {
   };
   page.once('dialog', dialogHandler);
   
+  // Search for the dataset to ensure it's visible
+  const searchInput = page.getByPlaceholder('Search datasets...');
+  if (await searchInput.isVisible()) {
+    await searchInput.fill(name);
+    await page.waitForTimeout(500);
+  }
+  
   const datasetRow = page.locator('table tbody tr').filter({ hasText: name });
   await datasetRow.getByRole('button', { name: 'Delete' }).click();
   
   // Wait a bit for dialog to appear and be handled
   await page.waitForTimeout(500);
+  
+  // Clear search to avoid false positives from similar dataset names
+  if (await searchInput.isVisible()) {
+    await searchInput.clear();
+    await page.waitForTimeout(300);
+  }
   
   // Wait for the row to disappear after deletion
   await expect(datasetRow).not.toBeVisible({ timeout: 10000 });
@@ -320,6 +348,54 @@ export function shouldSkipCleanup() {
 }
 
 /**
+ * Deletes a human metric via the UI.
+ * @param {import('@playwright/test').Page} page - The Playwright page object.
+ * @param {string} name - The name of the metric to delete.
+ * @returns {Promise<void>}
+ */
+export async function deleteHumanMetric(page, name) {
+  if (shouldSkipCleanup()) {
+    console.log(`⏭️  Skipping cleanup: Keeping metric "${name}" (set SKIP_CLEANUP=false to enable cleanup)`);
+    return;
+  }
+  
+  console.log(`Deleting metric: ${name}`);
+  
+  // Set up dialog handler before clicking delete
+  let dialogHandled = false;
+  const dialogHandler = async (dialog) => {
+    if (!dialogHandled) {
+      dialogHandled = true;
+      console.log(`Accepting confirmation dialog: ${dialog.message()}`);
+      try {
+        await dialog.accept();
+      } catch (e) {
+        console.log(`Dialog already handled: ${e.message}`);
+      }
+    }
+  };
+  page.once('dialog', dialogHandler);
+  
+  // Search for the metric to ensure it's visible
+  await page.getByRole('textbox', { name: /Search metrics/ }).fill(name);
+  await page.waitForTimeout(500);
+  
+  const metricRow = page.locator('table tbody tr').filter({ hasText: name });
+  await metricRow.getByRole('button', { name: 'Delete' }).click();
+  
+  // Wait a bit for dialog to appear and be handled
+  await page.waitForTimeout(500);
+  
+  // Clear search to avoid false positives from similar metric names
+  await page.getByRole('textbox', { name: /Search metrics/ }).clear();
+  await page.waitForTimeout(300);
+  
+  // Wait for the row to disappear after deletion
+  await expect(metricRow).not.toBeVisible({ timeout: 10000 });
+  console.log(`Successfully deleted metric: ${name}`);
+}
+
+/**
  * Adds an evaluator to an experiment form using the new search-based selector.
  * This function works with the searchable evaluator selector introduced in the UI refactoring.
  * @param {import('@playwright/test').Page} page - The Playwright page object.
@@ -334,29 +410,26 @@ export async function addEvaluatorToExperiment(page, modal, evaluatorName) {
   const searchInput = modal.getByPlaceholder(/Search evaluators/);
   await expect(searchInput).toBeVisible();
   
-  // Click the search input to focus it and open the dropdown
+  // Click the search input to focus it
   await searchInput.click();
-
-  // Clear any existing text and type the evaluator name to search for it
-  await searchInput.clear();
-  await searchInput.fill(evaluatorName);
+  
+  // Type first 10 chars to trigger search (faster than full name)
+  const searchText = evaluatorName.substring(0, Math.min(10, evaluatorName.length));
+  await searchInput.pressSequentially(searchText, { delay: 50 });
+  
+  // Wait for search debounce (300ms) + buffer
+  await page.waitForTimeout(600);
 
   // Wait for the dropdown container (listbox) to appear.
   // The popover is rendered in a portal, so target it globally.
-  const listboxes = page.getByRole('listbox', { name: 'Evaluator search results' });
-  await expect(listboxes.first()).toBeVisible({ timeout: 15000 });
+  const listbox = page.getByRole('listbox', { name: 'Evaluator search results' });
+  await expect(listbox).toBeVisible({ timeout: 15000 });
 
-  // Check if we see "Loading..." and wait for it to finish
-  const loadingText = listboxes.getByText('Loading...');
-  const hasLoading = await loadingText.isVisible().catch(() => false);
-  if (hasLoading) {
-    console.log(`Waiting for evaluator search results for "${evaluatorName}"...`);
-    await expect(loadingText).not.toBeVisible({ timeout: 30000 });
-  }
-
-  // Now wait for the specific evaluator option to appear in the dropdown
-  const evaluatorOption = page
-    .getByRole('option', { name: evaluatorName, exact: true })
+  // Wait for the specific evaluator option to appear in the dropdown
+  // The option's accessible name includes both name and description, so use filter
+  const evaluatorOption = listbox
+    .locator('[role="option"]')
+    .filter({ hasText: evaluatorName })
     .first();
   await expect(evaluatorOption).toBeVisible({ timeout: 15000 });
   
@@ -367,4 +440,54 @@ export async function addEvaluatorToExperiment(page, modal, evaluatorName) {
   await expect(modal.getByText(evaluatorName, { exact: true })).toBeVisible();
   
   console.log(`Successfully added evaluator: ${evaluatorName}`);
+}
+
+/**
+ * Creates a human metric via the UI.
+ * @param {import('@playwright/test').Page} page - The Playwright page object.
+ * @param {Object} options - The metric creation options.
+ * @param {string} options.name - The unique name for the metric.
+ * @param {'numeric'|'categorical'} options.type - The type of metric.
+ * @param {number} [options.min] - For numeric metrics, the minimum value.
+ * @param {number} [options.max] - For numeric metrics, the maximum value.
+ * @param {string[]} [options.categories] - For categorical metrics, array of category names.
+ * @returns {Promise<void>}
+ */
+export async function createHumanMetric(page, { name, type, min, max, categories }) {
+  console.log(`Creating human metric: ${name} (${type})`);
+  
+  await page.getByRole('button', { name: '+ Create Metric' }).click();
+  const modal = page.locator('[role="dialog"]');
+  await expect(modal).toBeVisible();
+  
+  await modal.getByLabel('Metric Name').fill(name);
+  
+  // Select metric type
+  await modal.getByRole('combobox').selectOption(type);
+  
+  if (type === 'numeric') {
+    if (min !== undefined) {
+      await modal.getByLabel('Min').fill(String(min));
+    }
+    if (max !== undefined) {
+      await modal.getByLabel('Max').fill(String(max));
+    }
+  } else if (type === 'categorical') {
+    if (categories && categories.length > 0) {
+      await modal.getByLabel('Options (comma separated)').fill(categories.join(', '));
+    }
+  }
+  
+  const createButton = modal.getByRole('button', { name: 'Create' });
+  await createButton.click();
+  await expect(modal).not.toBeVisible({ timeout: 10000 });
+  
+  // Search for the metric to ensure it's visible
+  await page.getByRole('textbox', { name: /Search metrics/ }).fill(name);
+  await page.waitForTimeout(500);
+  
+  // Verify metric was created
+  await expect(page.locator('table tbody tr').filter({ hasText: name })).toBeVisible({ timeout: 5000 });
+  
+  console.log(`Successfully created metric: ${name}`);
 }

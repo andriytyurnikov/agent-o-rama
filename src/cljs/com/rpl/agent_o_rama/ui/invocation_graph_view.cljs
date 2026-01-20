@@ -14,6 +14,9 @@
    [com.rpl.agent-o-rama.ui.feedback :as feedback]
    [com.rpl.agent-o-rama.ui.components.conversation :as conversation]
    [com.rpl.agent-o-rama.ui.streaming :as streaming]
+   [com.rpl.agent-o-rama.ui.human-feedback.add-to-queue :as add-to-queue]
+
+   [reitit.frontend.easy :as rfe]
 
    ["react" :refer [useState useCallback useEffect]]
    ["@xyflow/react" :refer [ReactFlow Background Controls useNodesState useEdgesState Handle MiniMap]]
@@ -285,30 +288,16 @@
                                   (state/dispatch [:db/set-value [:ui :hitl :responses hr-invoke-id] ""]))}
              (if submitting? "Submitting..." "Submit Response"))))))
 
-(defui node-info-panel [{:keys [node-id node-name graph-data module-id]}]
-  ($ :div {:className "bg-indigo-50 p-3 rounded-md mt-4"}
-     ($ :div {:className "flex justify-between items-center"}
-        ($ :span {:className "text-sm font-medium text-indigo-700"} "Node")
-        ($ :span {:className "text-sm text-indigo-600 font-mono"} node-name))
-     ($ :div {:className "flex justify-between items-center mt-1"}
-        ($ :span {:className "text-sm font-medium text-indigo-700"} "ID")
-        ($ :span {:className "text-xs text-indigo-500 font-mono"} (str node-id)))
-     ;; Add to Dataset button for individual node
-     ($ :div {:className "mt-3"}
-        ($ :button
-           {:className "text-sm font-medium py-1 px-3 rounded-md transition-colors bg-white text-black hover:bg-indigo-200 cursor-pointer"
-            :onClick (fn [e]
-                       (.stopPropagation e)
-                       (let [raw-node-data (get graph-data node-id)
-                             input-data (transform-node-input-for-dataset raw-node-data node-name)
-                             output-data (transform-node-data-for-dataset raw-node-data node-name)]
-                         (state/dispatch [:modal/show-form :add-from-trace
-                                          {:module-id module-id
-                                           :title (str "Add Node '" node-name "' to Dataset")
-                                           :source-type :node
-                                           :source-args input-data
-                                           :source-emits output-data}])))}
-           "Add node to Dataset"))))
+(defui node-info-panel [{:keys [node-id node-name graph-data module-id agent-name invoke-id]}]
+  (let [raw-node-data (get graph-data node-id)
+        node-task-id (:node-task-id raw-node-data)]
+    ($ :div {:className "bg-indigo-50 p-3 rounded-md mt-4"}
+       ($ :div {:className "flex justify-between items-center"}
+          ($ :span {:className "text-sm font-medium text-indigo-700"} "Node")
+          ($ :span {:className "text-sm text-indigo-600 font-mono"} node-name))
+       ($ :div {:className "flex justify-between items-center mt-1"}
+          ($ :span {:className "text-sm font-medium text-indigo-700"} "ID")
+          ($ :span {:className "text-xs text-indigo-500 font-mono"} (str node-id))))))
 
 (defui node-result-panel [{:keys [result]}]
   (when result
@@ -334,7 +323,7 @@
                                   (.stopPropagation e)
                                   (state/dispatch [:modal/show :exception-detail
                                                    {:title (str "Exception " (inc idx))
-                                                    :component ($ ExceptionDetailModal {:title (str "Exception " (inc idx)) :content exc-str})}]))
+                                                    :component ($ ExceptionDetailModal {:title (str "Exception " (inc idx)) :content exc-text})}]))
                        :title "Click to view full exception"}
                  ($ :div {:className "text-xs font-mono text-red-800"}
                     first-line))))))))
@@ -427,17 +416,17 @@
   [{:keys [module-id agent-name invoke-id node-name node-invoke-id is-streaming?]}]
   (let [{:keys [text streaming? chunks reset-count]}
         (streaming/use-node-stream module-id agent-name invoke-id node-name node-invoke-id)
-        
+
         ;; Ref for auto-scrolling
         scroll-ref (uix/use-ref nil)]
-    
+
     ;; Auto-scroll to bottom when text changes
     (uix/use-effect
      (fn []
        (when-let [el @scroll-ref]
          (set! (.-scrollTop el) (.-scrollHeight el))))
      [text])
-    
+
     ;; Only show the panel if we have chunks to display
     (when (seq chunks)
       ($ :div {:className "bg-blue-50 p-3 rounded-md mt-4 border border-blue-200"}
@@ -451,7 +440,7 @@
             (when (pos? reset-count)
               ($ :span {:className "text-xs bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded"}
                  (str "↻ Reset " reset-count "x"))))
-         
+
          ;; Streaming content with auto-scroll
          ($ :div {:ref scroll-ref
                   :className "bg-white rounded border border-blue-100 p-3 max-h-64 overflow-y-auto"}
@@ -459,7 +448,7 @@
                text
                (when streaming?
                  ($ :span {:className "inline-block w-2 h-4 bg-blue-500 animate-pulse ml-0.5"}))))
-         
+
          ;; Chunk count
          (when (seq chunks)
            ($ :div {:className "mt-2 text-xs text-blue-500"}
@@ -507,8 +496,23 @@
                                         emits graph-data flow-nodes on-select-node on-paginate-node
                                         agent-invoke-id]}]
   (let [;; Determine if node is in progress (started but not finished)
-        is-node-in-progress? (and start-time (not finish-time))]
+        is-node-in-progress? (and start-time (not finish-time))
+        raw-node-data (get graph-data node-id)]
     ($ :<>
+       ;; Add to Dataset button (first, at top)
+       ($ :button.inline-flex.items-center.justify-center.px-3.py-2.bg-white.text-gray-700.text-sm.font-medium.rounded-md.border.border-gray-300.hover:bg-gray-50.transition-colors.cursor-pointer.w-full.mb-4
+          {:onClick (fn [e]
+                      (.stopPropagation e)
+                      (let [input-data (transform-node-input-for-dataset raw-node-data node-name)
+                            output-data (transform-node-data-for-dataset raw-node-data node-name)]
+                        (state/dispatch [:modal/show-form :add-from-trace
+                                         {:module-id module-id
+                                          :title (str "Add Node '" node-name "' to Dataset")
+                                          :source-type :node
+                                          :source-args input-data
+                                          :source-emits output-data}])))}
+          "Add to Dataset")
+
        ($ hitl-request-panel {:hr hr
                               :hr-invoke-id hr-invoke-id
                               :hitl-response hitl-response
@@ -520,7 +524,9 @@
        ($ node-info-panel {:node-id node-id
                            :node-name node-name
                            :graph-data graph-data
-                           :module-id module-id})
+                           :module-id module-id
+                           :agent-name agent-name
+                           :invoke-id invoke-id})
 
        ;; Streaming panel - shown for nodes that are in progress or have streaming data
        ;; Uses node-id (specific node invocation UUID) to stream from the correct node instance
@@ -531,7 +537,6 @@
                                   :node-name node-name
                                   :node-invoke-id node-id  ;; Specific node invocation ID
                                   :is-streaming? is-node-in-progress?}))
-
 
        ($ node-exceptions-panel {:exceptions exceptions})
 
@@ -555,6 +560,7 @@
   (let [data (when selected-node
                (js->clj (aget selected-node "data") :keywordize-keys true))
         node-id (:node-id data)
+        node-task-id (:agent-task-id data)
         node-name (:node data)
         input (:input data)
         exceptions (:exceptions data)
@@ -638,7 +644,12 @@
                  (when feedback
                    ($ feedback/feedback-list
                       {:feedback-data feedback
-                       :module-id module-id})))
+                       :module-id module-id
+                       :agent-name agent-name
+                       :invoke-id invoke-id
+                       :node-task-id node-task-id
+                       :node-invoke-id node-id
+                       :node-name node-name})))
 
               ;; Default case
               nil))))))
@@ -907,7 +918,7 @@
                                :is-live? is-live?})))
          ($ :p.text-sm.text-gray-500.italic "No metadata exists")))))
 
-(defui result-panel [{:keys [result summary-data module-id]}]
+(defui result-panel [{:keys [result summary-data module-id agent-name invoke-id]}]
   (when result
     (let [failure? (:failure? result)
           result-val (:val result)]
@@ -926,26 +937,25 @@
                                          :on-expand (fn [{:keys [title content]}]
                                                       (state/dispatch [:modal/show :content-detail
                                                                        {:title title
-                                                                        :component ($ common/ContentDetailModal {:title title :content content})}]))}))
-         ($ :div {:className "mt-4"}
-            ($ :button
-               {:className "w-full text-sm font-medium py-2 px-4 rounded-md transition-colors bg-green-100 text-green-800 hover:bg-green-200"
-                :onClick (fn []
-                           (let [input-data (:invoke-args summary-data)
-                                 output-data (:val (:result summary-data))]
-                             (state/dispatch [:modal/show-form :add-from-trace
-                                              {:module-id module-id
-                                               :title "Add Agent Invocation to Dataset"
-                                               :source-type :agent
-                                               :source-args input-data
-                                               :source-result output-data}])))}
-               "Add to Dataset"))))))
+                                                                        :component ($ common/ContentDetailModal {:title title :content content})}]))}))))))
 
 (defui info-panel [{:keys [graph-data summary-data on-select-node module-id agent-name task-id forks fork-of invoke-id]}]
-  (let [result (:result summary-data)
-        feedback (:feedback summary-data)]
+  (let [result (:result summary-data)]
 
     ($ :div {:className "space-y-4"}
+
+       ;; Add to Dataset button (first, at top)
+       ($ :button.inline-flex.items-center.justify-center.px-3.py-2.bg-white.text-gray-700.text-sm.font-medium.rounded-md.border.border-gray-300.hover:bg-gray-50.transition-colors.cursor-pointer.w-full
+          {:onClick (fn []
+                      (let [input-data (:invoke-args summary-data)
+                            output-data (:val (:result summary-data))]
+                        (state/dispatch [:modal/show-form :add-from-trace
+                                         {:module-id module-id
+                                          :title "Add Agent Invocation to Dataset"
+                                          :source-type :agent
+                                          :source-args input-data
+                                          :source-result output-data}])))}
+          "Add to Dataset")
 
        ($ lineage-panel {:module-id module-id
                          :agent-name agent-name
@@ -955,13 +965,13 @@
 
        ($ result-panel {:result result
                         :summary-data summary-data
-                        :module-id module-id})
+                        :module-id module-id
+                        :agent-name agent-name
+                        :invoke-id invoke-id})
 
        ($ exceptions-panel {:summary-data summary-data
                             :graph-data graph-data
                             :on-select-node on-select-node})
-
-       ($ feedback/feedback-panel {:feedback feedback})
 
        ($ trace-analytics/info {:invoke-id invoke-id})
        ($ metadata-panel {:summary-data summary-data
@@ -1041,7 +1051,22 @@
 
 (defui right-panel [{:keys [graph-data summary-data changed-nodes on-remove-node-change affected-nodes flow-nodes on-select-node on-execute-fork on-clear-fork forking-mode? on-toggle-forking-mode is-live
                             module-id agent-name task-id forks fork-of invoke-id sidebar-width on-sidebar-width-change]}]
-  (let [active-tab (state/use-sub [:ui :active-tab])
+  (let [;; Read tab from URL query params, default to :info
+        query-params (state/use-sub [:route :query-params])
+        tab-param (get query-params :tab)
+        active-tab (case tab-param
+                     "feedback" :feedback
+                     "fork" :fork
+                     :info)  ; default
+
+        ;; Helper to update tab via URL
+        set-tab! (fn [tab-name]
+                   (rfe/replace-state :agent/invocation-detail
+                                      {:module-id module-id
+                                       :agent-name agent-name
+                                       :invoke-id invoke-id}
+                                      {:tab tab-name}))
+
         [is-dragging set-is-dragging] (uix/use-state false)
 
         handle-mouse-down (fn [e]
@@ -1081,15 +1106,7 @@
              (on-toggle-forking-mode)))))
      [active-tab forking-mode? on-toggle-forking-mode])
 
-    ;; Ensure we switch back to Info tab when a new invocation starts (live)
-    ;; or when fork changes are cleared
-    (uix/use-effect
-     (fn []
-       (when (or is-live (empty? changed-nodes))
-         (state/dispatch [:db/set-value [:ui :active-tab] :info])))
-     [is-live changed-nodes])
-
-    ($ :div {:className "fixed right-0 top-32 h-[calc(100vh-8rem)] bg-white shadow-lg border-l border-gray-200 flex flex-col z-40"
+    ($ :div {:className "fixed right-0 top-16 h-[calc(100vh-4rem)] bg-white shadow-lg border-l border-gray-200 flex flex-col z-40"
              :style {:width (str sidebar-width "px")}
              :data-id "agent-info-panel"}
 
@@ -1108,13 +1125,13 @@
                                                {"bg-white text-gray-900 shadow-sm" (= active-tab :info)
                                                 "text-gray-600 hover:text-gray-900" (not= active-tab :info)})
                          :data-id "info-tab"
-                         :onClick #(state/dispatch [:db/set-value [:ui :active-tab] :info])}
+                         :onClick #(set-tab! "info")}
                 "Info")
              ($ :button {:className (common/cn "flex-1 py-2 px-3 text-sm font-medium rounded-md transition-colors"
                                                {"bg-white text-gray-900 shadow-sm" (= active-tab :feedback)
                                                 "text-gray-600 hover:text-gray-900" (not= active-tab :feedback)})
                          :data-id "feedback-tab"
-                         :onClick #(state/dispatch [:db/set-value [:ui :active-tab] :feedback])}
+                         :onClick #(set-tab! "feedback")}
                 "Feedback")
              ;; Only show Fork tab when not in live mode
              (when-not is-live
@@ -1122,7 +1139,7 @@
                                                  {"bg-white text-gray-900 shadow-sm" (= active-tab :fork)
                                                   "text-gray-600 hover:text-gray-900" (not= active-tab :fork)})
                            :data-id "fork-tab"
-                           :onClick #(state/dispatch [:db/set-value [:ui :active-tab] :fork])}
+                           :onClick #(set-tab! "fork")}
                   (str "Fork" (when (> (count changed-nodes) 0) (str " (" (count changed-nodes) ")")))))))
 
        ;; Tab content
@@ -1138,8 +1155,11 @@
                                  :fork-of fork-of
                                  :invoke-id invoke-id})
 
-            :feedback ($ feedback/feedback-list {:feedback-data (:feedback summary-data)
-                                                 :module-id module-id})
+            :feedback ($ :div {:data-id "agent-feedback-container"}
+                         ($ feedback/feedback-list {:feedback-data (:feedback summary-data)
+                                                    :module-id module-id
+                                                    :agent-name agent-name
+                                                    :invoke-id invoke-id}))
 
             :fork ($ fork-panel {:changed-nodes changed-nodes
                                  :graph-data graph-data

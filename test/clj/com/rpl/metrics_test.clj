@@ -1513,7 +1513,7 @@
               :created-at  0
               :modified-at 0}
             ]))
-    )))
+   )))
 
 
 (deftest human-metric-telemetry-test
@@ -1910,5 +1910,5 @@
                                     [:count]
                                     nil)))
 
-       (is (= [[:human "c1"] [:human "n1"]] (ana/human-metric-ids human-feedback-pstate)))
-      ))))
+      (is (= [[:human "c1"] [:human "n1"]] (ana/human-metric-ids human-feedback-pstate)))
+     ))))
