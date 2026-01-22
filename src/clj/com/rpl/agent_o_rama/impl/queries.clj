@@ -22,7 +22,9 @@
     Comparator
     PriorityQueue]
    [java.util.concurrent
-    CompletableFuture]))
+    CompletableFuture]
+   [rpl.rama.generated
+    TopologyDoesNotExistException]))
 
 (defn tracing-query-name
   []
@@ -31,6 +33,14 @@
 (defn agent-get-names-query-name
   []
   "_agents-get-names")
+
+(defn has-aor-modules? [cluster module-name]
+  (try
+    (do (foreign-query cluster module-name (agent-get-names-query-name)) true)
+    (catch Exception e
+      (if (h/exception-cause? TopologyDoesNotExistException e)
+        false
+        (throw e)))))
 
 (defn agent-get-fork-affected-aggs-query-name
   []

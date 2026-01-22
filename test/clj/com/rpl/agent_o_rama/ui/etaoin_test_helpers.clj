@@ -9,11 +9,11 @@
   (:require
    [clj-test-containers.core :as tc]
    [com.rpl.agent-o-rama :as aor]
+   [com.rpl.agent-o-rama.impl.queries :as queries]
    [com.rpl.rama :as rama]
    [com.rpl.rama.test :as rtest]
-   [etaoin.api :as e]
-   [shadow.cljs.devtools.api :as shadow]
-   [shadow.cljs.devtools.server])
+   [com.rpl.test-helpers :as th]
+   [etaoin.api :as e])
   (:import
    [com.rpl.agentorama
     AgentInvoke]
@@ -80,6 +80,23 @@
   (when-not (:ipc system)
     {:ipc (rtest/create-ipc)}))
 
+(defn- wait-for-aor-module-ready!
+  [ipc module-name]
+  (let [ready? (fn []
+                 (try
+                   (let [modules (set (rama/deployed-module-names ipc))]
+                     (and (contains? modules module-name)
+                          (queries/has-aor-modules? ipc module-name)))
+                   (catch Exception _ false)))]
+    (when-not (th/condition-attained?*
+               ready?
+               {:max-wait      30000
+                :initial-delay 10
+                :max-delay     200
+                :backoff-factor 2})
+      (throw (ex-info "Timed out waiting for module queries to be ready"
+                      {:module-name module-name})))))
+
 (defn setup-agent-module
   "Deploy agent module.
    Returns a map with :ipc, :module-name, and :launched flag.
@@ -100,6 +117,7 @@
        ipc
        agent-module
        {:tasks 1 :threads 1})
+      (wait-for-aor-module-ready! ipc module-name)
       (when post-deploy-hook
         (post-deploy-hook ipc module-name))
       {:module-name module-name
@@ -107,17 +125,14 @@
 
 (defn setup-agent-ui
   "Start the agent UI server.
-   Returns true if UI was started, false if already running.
+   Frontend must be pre-built before running tests.
 
    Options:
    - :port - UI server port (default: 8080)"
   [system {:keys [port] :or {port default-port}}]
   (when-not (:ui-launched system)
-    (if in-test-runner?
-      (shadow/compile :dev)
-      (do
-        (shadow.cljs.devtools.server/start!)
-        (shadow/watch :dev)))
+    ;; Frontend should be pre-built (by CI or manually).
+    ;; Test harness never builds the frontend.
     (aor/start-ui (:ipc system) {:port port})
     {:ui-launched true
      :port port}))
@@ -149,8 +164,6 @@
 (defn- teardown-agent-ui
   [{:keys [ui-launched]}]
   (when ui-launched
-    (when-not in-test-runner?
-      (shadow.cljs.devtools.server/stop!))
     (aor/stop-ui)
     {:ui-launched nil
      :port nil}))
