@@ -1201,7 +1201,7 @@
        (fn [l]
          (setval [:items ALL (must :id)] :* l)))
 
-     (bind res (no-ids (foreign-invoke-query queue-page "q1" 3 nil)))
+     (bind res (no-ids (foreign-invoke-query queue-page "q1" 3 false nil)))
      (is (= (:items res)
             [{:output  (aor-types/->AgentResult "a!" false)
               :id      :*
@@ -1219,7 +1219,7 @@
               :input   queries/TARGET-DOES-NOT-EXIST
               :target  target2}
             ]))
-     (bind res (no-ids (foreign-invoke-query queue-page "q1" 3 (:pagination-params res))))
+     (bind res (no-ids (foreign-invoke-query queue-page "q1" 3 false (:pagination-params res))))
      (is (= (:items res)
             [{:output  queries/TARGET-DOES-NOT-EXIST
               :id      :*
@@ -1238,7 +1238,7 @@
               :target  target5}
             ]))
 
-     (bind res (no-ids (foreign-invoke-query queue-page "q1" 3 (:pagination-params res))))
+     (bind res (no-ids (foreign-invoke-query queue-page "q1" 3 false (:pagination-params res))))
      (is (= (:items res)
             [{:output  queries/TARGET-DOES-NOT-EXIST
               :id      :*
@@ -1253,11 +1253,65 @@
      (is (nil? (:pagination-params res)))
 
 
+     (bind res (no-ids (foreign-invoke-query queue-page "q1" 3 true nil)))
+     (is (= (:items res)
+            [{:output  queries/TARGET-DOES-NOT-EXIST
+              :id      :*
+              :comment "comment 8"
+              :input   queries/TARGET-DOES-NOT-EXIST
+              :target  target7}
+             {:output  queries/TARGET-DOES-NOT-EXIST
+              :id      :*
+              :comment "comment 7"
+              :input   queries/TARGET-DOES-NOT-EXIST
+              :target  target6}
+             {:output  "b?"
+              :id      :*
+              :comment "comment 6"
+              :input   ["b?"]
+              :target  target5}
+            ]))
+
+     (bind res (no-ids (foreign-invoke-query queue-page "q1" 3 true (:pagination-params res))))
+     (is (= (:items res)
+            [{:output  [{"node" "end" "args" ["b?"]}]
+              :id      :*
+              :comment "comment 5"
+              :input   ["b"]
+              :target  target4}
+             {:output  queries/TARGET-DOES-NOT-EXIST
+              :id      :*
+              :comment "comment 4"
+              :input   queries/TARGET-DOES-NOT-EXIST
+              :target  target3}
+             {:output  queries/TARGET-DOES-NOT-EXIST
+              :id      :*
+              :comment "comment 3"
+              :input   queries/TARGET-DOES-NOT-EXIST
+              :target  target2}
+            ]))
+
+     (bind res (no-ids (foreign-invoke-query queue-page "q1" 3 true (:pagination-params res))))
+     (is (= (:items res)
+            [{:output  (aor-types/->AgentResult "b?" false)
+              :id      :*
+              :comment "comment 2"
+              :input   ["b"]
+              :target  target1}
+             {:output  (aor-types/->AgentResult "a!" false)
+              :id      :*
+              :comment "comment 1"
+              :input   ["a"]
+              :target  target0}
+            ]))
+     (is (nil? (:pagination-params res)))
+
+
      (bind all-ids-fn
        (fn []
          (select
           [:items ALL :id]
-          (foreign-invoke-query queue-page "q1" 10 nil))))
+          (foreign-invoke-query queue-page "q1" 10 false nil))))
      (bind all-ids (all-ids-fn))
 
      (bind cleaned-feedback
@@ -1513,8 +1567,7 @@
               :created-at  0
               :modified-at 0}
             ]))
-   )))
-
+    )))
 
 (deftest human-metric-telemetry-test
   (with-redefs [TICKS (atom 0)
@@ -1628,7 +1681,7 @@
          (fn []
            (select
             [:items ALL :id]
-            (foreign-invoke-query queue-page "q1" 1000 nil))))
+            (foreign-invoke-query queue-page "q1" 1000 false nil))))
 
 
        (bind target0 (agent-target "foo" inv1))
@@ -1910,5 +1963,5 @@
                                     [:count]
                                     nil)))
 
-      (is (= [[:human "c1"] [:human "n1"]] (ana/human-metric-ids human-feedback-pstate)))
-     ))))
+       (is (= [[:human "c1"] [:human "n1"]] (ana/human-metric-ids human-feedback-pstate)))
+      ))))
