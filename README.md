@@ -295,6 +295,18 @@ Here's an example of creating an action to add slow runs to a dataset:
 
 See [this page](https://github.com/redplanetlabs/agent-o-rama/wiki/Actions,-rules,-and-telemetry) for the details on creating actions.
 
+### Human feedback
+
+A comprehensive [human feedback](https://github.com/redplanetlabs/agent-o-rama/wiki/Human-feedback) system integrates both structured and unstructured human evaluation directly into your agent development workflow.
+
+Feedback queues organize evaluation work across your team. Automatically route agent runs for review, configure which feedback to collect, and give reviewers a streamlined interface that displays inputs and outputs alongside the feedback form, advancing to the next item after submission.
+
+![Online evaluation](readme/human-queue-item-form.png)
+
+Feedback can also be recorded directly on traces, making it easy to record insights during debugging or analysis.
+
+Human feedback flows into the telemetry system where you can visualize trends over time and track whether agent improvements align with human evaluations.
+
 
 ### Time-series telemetry
 
