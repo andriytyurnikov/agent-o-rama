@@ -301,7 +301,7 @@ A comprehensive [human feedback](https://github.com/redplanetlabs/agent-o-rama/w
 
 Feedback queues organize evaluation work across your team. Automatically route agent runs for review, configure which feedback to collect, and give reviewers a streamlined interface that displays inputs and outputs alongside the feedback form, advancing to the next item after submission.
 
-![Online evaluation](readme/human-queue-item-form.png)
+![Human feedback](readme/human-queue-item-form.png)
 
 Feedback can also be recorded directly on traces, making it easy to record insights during debugging or analysis.
 
