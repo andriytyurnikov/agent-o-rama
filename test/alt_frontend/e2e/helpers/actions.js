@@ -1,9 +1,9 @@
 // @ts-check
 import { expect } from '@playwright/test';
-import { TIMEOUTS, PATTERNS, waitForSearchDebounce, waitForAnimation } from './selectors.js';
+import { TIMEOUTS } from './selectors.js';
 
 // Re-export for convenience
-export { TIMEOUTS, PATTERNS, waitForSearchDebounce, waitForAnimation } from './selectors.js';
+export { TIMEOUTS } from './selectors.js';
 
 /**
  * Common actions for alt-frontend E2E tests.
@@ -33,13 +33,4 @@ export async function waitForLoadingToFinish(page, timeout = TIMEOUTS.DEFAULT) {
   await loadingSpinner.waitFor({ state: 'hidden', timeout }).catch(() => {
     // It's OK if there are no loading spinners
   });
-}
-
-/**
- * Check if cleanup should be skipped based on environment variable.
- *
- * @returns {boolean}
- */
-export function shouldSkipCleanup() {
-  return process.env.SKIP_CLEANUP === 'true' || process.env.KEEP_TEST_DATA === 'true';
 }
