@@ -34,6 +34,10 @@ public/
 resource/public/main.js
 resource/public/main*.js
 resource/public/manifest.edn
+resource/alt-frontend/public/
+
+# auto-generated route registry
+src/alt_frontend/routes/registry.cljs
 
 # claude files
 CLAUDE.md

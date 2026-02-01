@@ -85,7 +85,7 @@
                           :source-paths ["scripts"]
                           :dependencies [[comb "0.1.1"]
                                          [org.clojure/clojure "1.12.2"]]}
-             :ui         {:source-paths ["test/cljs"]
+             :ui         {:source-paths ["test/cljs" "src"]
                           :dependencies [[com.rpl/specter "1.1.4"] ;; only cljs
                                          [com.pitch/uix.core "1.4.3"]
                                          [com.pitch/uix.dom "1.4.3"]

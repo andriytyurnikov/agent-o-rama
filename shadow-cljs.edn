@@ -19,6 +19,21 @@
    :autorun   true
    :ns-regexp "-test$"
    :dev-tools {:preloads [com.rpl.agent-o-rama.ui.dom]}
-   :esm       true}}
+   :esm       true}
+  :alt-frontend
+  {:target           :browser
+   :modules          {:main {:init-fn alt-frontend.main/init}}
+   :output-dir       "resource/alt-frontend/public/"
+   :module-hash-names true
+   :build-hooks      [(alt-frontend.build-hooks.route-registry-generator/generate-route-registry)]
+   :compiler-options {:optimizations :advanced
+                      :infer-externs :auto}}
+  :alt-dev
+  {:target           :browser
+   :modules          {:main {:init-fn alt-frontend.main/init}}
+   :output-dir       "resource/alt-frontend/public/"
+   :build-hooks      [(alt-frontend.build-hooks.route-registry-generator/generate-route-registry)]
+   :compiler-options {:optimizations :none
+                      :source-map    true}}}
  :nrepl  {:middleware [cider.nrepl/cider-middleware]
           #_#_:port 61000}}

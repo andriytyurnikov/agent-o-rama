@@ -70,36 +70,51 @@
 
 (defn- get-js-filename
   "Reads the shadow-cljs manifest to get the hashed JS filename.
-   Throws if manifest doesn't exist or is malformed."
-  []
-  (let [manifest-resource (io/resource "public/manifest.edn")]
-    (when-not manifest-resource
-      (throw (ex-info "manifest.edn not found - run shadow-cljs release :frontend" {})))
-    (let [manifest (edn/read-string (slurp manifest-resource))
-          output-name (:output-name (first manifest))]
-      (when-not output-name
-        (throw (ex-info "Could not read :output-name from manifest.edn" {:manifest manifest})))
-      output-name)))
+   Throws if manifest doesn't exist or is malformed.
+   variant: nil for main frontend, :alt for alt-frontend"
+  ([]
+   (get-js-filename nil))
+  ([variant]
+   (let [manifest-path (if (= variant :alt)
+                         "alt-frontend/public/manifest.edn"
+                         "public/manifest.edn")
+         manifest-resource (io/resource manifest-path)]
+     (when-not manifest-resource
+       (throw (ex-info (str "manifest.edn not found at " manifest-path) {:variant variant})))
+     (let [manifest (edn/read-string (slurp manifest-resource))
+           output-name (:output-name (first manifest))]
+       (when-not output-name
+         (throw (ex-info "Could not read :output-name from manifest.edn" {:manifest manifest})))
+       output-name))))
 
 (defn- render-index-html
-  "Renders index.html with the correct hashed JS filename."
-  []
-  (-> (io/resource "index.html")
-      slurp
-      (str/replace "{{MAIN_JS}}" (get-js-filename))))
+  "Renders index.html with the correct hashed JS filename.
+   variant: nil for main frontend, :alt for alt-frontend"
+  ([]
+   (render-index-html nil))
+  ([variant]
+   (let [index-path (if (= variant :alt)
+                      "alt-frontend/index.html"
+                      "index.html")]
+     (-> (io/resource index-path)
+         slurp
+         (str/replace "{{MAIN_JS}}" (get-js-filename variant))))))
 
 (defn spa-index-handler
   "Serves the SPA index.html and ensures session cookie is set.
    This is critical for Firefox AJAX mode - the session must be established
-   on the initial page load since Sente's async responses can't set cookies."
-  [request]
-  (let [response (-> (resp/response (render-index-html))
-                     (resp/content-type "text/html")
-                     (resp/header "Cache-Control" "no-cache"))]
-    ;; Always set session on index.html response to establish cookie
-    (if (get-in request [:session :uid])
-      response
-      (assoc response :session {:uid (str (random-uuid))}))))
+   on the initial page load since Sente's async responses can't set cookies.
+   variant: nil for main frontend, :alt for alt-frontend"
+  ([request]
+   (spa-index-handler request nil))
+  ([request variant]
+   (let [response (-> (resp/response (render-index-html variant))
+                      (resp/content-type "text/html")
+                      (resp/header "Cache-Control" "no-cache"))]
+     ;; Always set session on index.html response to establish cookie
+     (if (get-in request [:session :uid])
+       response
+       (assoc response :session {:uid (str (random-uuid))})))))
 
 (defn file-handler
   "Serves static files from public and assets directories with cache headers."
@@ -110,6 +125,19 @@
           content-type (get-in response [:headers "Content-Type"])
           cache-control (cache-control-for-uri uri content-type)]
       (resp/header response "Cache-Control" cache-control))))
+
+(defn alt-file-handler
+  "Serves static files from alt-frontend/public directory with cache headers.
+   Strips /alt prefix from URI before resolving."
+  [request]
+  (let [uri (:uri request)
+        ;; Strip /alt prefix to get the actual file path
+        alt-uri (str/replace-first uri #"^/alt" "")
+        alt-request (assoc request :uri alt-uri)]
+    (when-let [response ((resource/wrap-resource (fn [_] nil) "alt-frontend/public") alt-request)]
+      (let [content-type (get-in response [:headers "Content-Type"])
+            cache-control (cache-control-for-uri uri content-type)]
+        (resp/header response "Cache-Control" cache-control)))))
 
 (defn- ensure-session-uid
   "Middleware that ensures the session has a unique :uid.
@@ -150,17 +178,31 @@
       ;; For any other route, return nil to let the next handler take over.
       :else nil)))
 
+(defn- alt-frontend-request?
+  "Returns true if this request is for the alt frontend (URI starts with /alt)."
+  [request]
+  (str/starts-with? (:uri request) "/alt"))
+
 (defn app-handler
   [request]
-  (or
-   ;; 1. Try to serve a static file from "public" or "resources/public".
-   (file-handler request)
-   ;; 2. Try our specific Sente routes.
-   (routes request)
-   ;; 3. As a fallback for any other GET request, serve the SPA's index.html.
-   ;; This enables client-side routing.
-   (when (= :get (:request-method request))
-     (spa-index-handler request))))
+  (if (alt-frontend-request? request)
+    ;; Alt frontend routing
+    (or
+     ;; 1. Try to serve a static file from alt-frontend/public
+     (alt-file-handler request)
+     ;; 2. As a fallback for any GET request, serve the alt SPA's index.html
+     (when (= :get (:request-method request))
+       (spa-index-handler request :alt)))
+    ;; Main frontend routing
+    (or
+     ;; 1. Try to serve a static file from "public" or "resources/public".
+     (file-handler request)
+     ;; 2. Try our specific Sente routes.
+     (routes request)
+     ;; 3. As a fallback for any other GET request, serve the SPA's index.html.
+     ;; This enables client-side routing.
+     (when (= :get (:request-method request))
+       (spa-index-handler request)))))
 
 ;; Keep wrap-defaults for Sente's session management
 (def handler
