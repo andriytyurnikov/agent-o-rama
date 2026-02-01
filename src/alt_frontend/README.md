@@ -231,8 +231,6 @@ const status = page.getByTestId('connection-status');
 await expect(status).toHaveAttribute('data-tip', 'Connected');
 ```
 
-See `test/alt_frontend/E2E_IMPROVEMENT_PLAN.md` for the full E2E testing strategy.
-
 ## Technology Stack
 
 | Component | Choice |
