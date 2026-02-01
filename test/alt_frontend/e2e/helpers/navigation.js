@@ -5,7 +5,7 @@
  * Feature-specific navigation helpers are colocated with their feature tests.
  * See features/<feature>/<feature>_helpers.js for feature-specific navigation.
  */
-import { waitForConnection, waitForLoadingToFinish } from './actions.js';
+import { waitForLoadingToFinish } from './actions.js';
 
 /**
  * Navigate to a hash-based route.
@@ -14,6 +14,5 @@ import { waitForConnection, waitForLoadingToFinish } from './actions.js';
  */
 export async function navigateTo(page, path) {
   await page.goto(`./#${path}`);
-  await waitForConnection(page).catch(() => {});
   await waitForLoadingToFinish(page);
 }

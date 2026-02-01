@@ -1,5 +1,4 @@
 // @ts-check
-import { expect } from '@playwright/test';
 import { TIMEOUTS } from './selectors.js';
 
 // Re-export for convenience
@@ -12,14 +11,13 @@ export { TIMEOUTS } from './selectors.js';
  */
 
 /**
- * Wait for the WebSocket connection to be established.
+ * Check if cleanup should be skipped (e.g., for debugging).
+ * Set SKIP_CLEANUP=1 environment variable to skip cleanup.
  *
- * @param {import('@playwright/test').Page} page
- * @param {number} timeout - Maximum time to wait in milliseconds
+ * @returns {boolean}
  */
-export async function waitForConnection(page, timeout = TIMEOUTS.DEFAULT) {
-  const connectionStatus = page.getByTestId('connection-status');
-  await expect(connectionStatus).toHaveAttribute('data-tip', 'Connected', { timeout });
+export function shouldSkipCleanup() {
+  return process.env.SKIP_CLEANUP === '1' || process.env.SKIP_CLEANUP === 'true';
 }
 
 /**

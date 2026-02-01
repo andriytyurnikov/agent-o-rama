@@ -1,6 +1,6 @@
 // @ts-check
 import { test as base, expect } from '@playwright/test';
-import { waitForConnection, waitForLoadingToFinish } from '../helpers/actions.js';
+import { waitForLoadingToFinish } from '../helpers/actions.js';
 import { getFirstTableRow } from '../helpers/table.js';
 
 /**
@@ -26,7 +26,6 @@ export const test = base.extend({
   moduleId: async ({ page }, use) => {
     // Navigate to agents list
     await page.goto('./#/agents');
-    await waitForConnection(page).catch(() => {});
     await waitForLoadingToFinish(page);
 
     // Try to open the first module

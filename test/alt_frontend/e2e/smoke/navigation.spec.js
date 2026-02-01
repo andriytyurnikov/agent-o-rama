@@ -5,7 +5,7 @@
  * These are basic tests that verify the app loads and navigation works.
  */
 import { test, expect } from '../setup/test-fixtures.js';
-import { waitForConnection, waitForLoadingToFinish } from '../helpers/actions.js';
+import { waitForLoadingToFinish } from '../helpers/actions.js';
 
 test.describe('Navigation Smoke Tests', () => {
   // Alt-frontend uses hash-based routing, so we use the baseURL directly
@@ -39,8 +39,6 @@ test.describe('Navigation Smoke Tests', () => {
     // Navigate to agents page (hash-based routing)
     await page.goto('./#/agents');
 
-    // Wait for WebSocket connection
-    await waitForConnection(page).catch(() => {});
     await waitForLoadingToFinish(page);
 
     // Should have a table, empty state, or error (when backend unavailable)

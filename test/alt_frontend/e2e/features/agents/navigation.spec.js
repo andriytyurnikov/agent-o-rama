@@ -7,13 +7,12 @@
  */
 import { test, expect } from '../../setup/test-fixtures.js';
 import { TIMEOUTS } from '../../helpers/selectors.js';
-import { waitForConnection, waitForLoadingToFinish } from '../../helpers/actions.js';
+import { waitForLoadingToFinish } from '../../helpers/actions.js';
 import { navigateToModule } from './agents_helpers.js';
 
 test.describe('Agent Navigation', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('./');
-    await waitForConnection(page).catch(() => {});
     await waitForLoadingToFinish(page);
   });
 
@@ -79,7 +78,6 @@ test.describe('Agent Navigation', () => {
 
   test('agents list has search functionality', async ({ page }) => {
     await page.goto('./#/agents');
-    await waitForConnection(page).catch(() => {});
     await waitForLoadingToFinish(page);
     expect(page.url()).toContain('#/agents');
 
@@ -119,7 +117,6 @@ test.describe('Agent Navigation', () => {
 test.describe('Module Navigation', () => {
   test('click module card navigates to module detail', async ({ page }) => {
     await page.goto('./');
-    await waitForConnection(page).catch(() => {});
     await waitForLoadingToFinish(page);
 
     // Check for module cards using testid prefix pattern

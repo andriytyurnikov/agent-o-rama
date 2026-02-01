@@ -4,7 +4,6 @@
  */
 import { test, expect } from '../setup/test-fixtures.js';
 import { TIMEOUTS } from '../helpers/selectors.js';
-import { waitForConnection } from '../helpers/actions.js';
 
 test.describe('App Loading Smoke Tests', () => {
   test('app should load without errors', async ({ page }) => {
@@ -39,12 +38,10 @@ test.describe('App Loading Smoke Tests', () => {
   test('WebSocket should connect', async ({ page }) => {
     await page.goto('./');
 
-    // Try to establish connection
+    // Try to verify connection - Playwright auto-waits on the assertion
     try {
-      await waitForConnection(page, 10000);
-
       // Connection status should show "Connected"
-      await expect(page.getByTestId('connection-status')).toHaveAttribute('data-tip', 'Connected');
+      await expect(page.getByTestId('connection-status')).toHaveAttribute('data-tip', 'Connected', { timeout: 10000 });
     } catch {
       // In test environments without a backend, connection may fail
       // This is acceptable for smoke tests
