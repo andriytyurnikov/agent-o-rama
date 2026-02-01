@@ -3,69 +3,7 @@
  * Helper functions for datasets feature E2E tests.
  */
 import { expect } from '@playwright/test';
-import { navigateTo, TIMEOUTS } from '../../helpers.js';
-
-// Modal helpers (used only by datasets)
-
-/**
- * Get the modal dialog locator.
- * @param {import('@playwright/test').Page} page
- * @returns {import('@playwright/test').Locator}
- */
-function getModal(page) {
-  return page.getByTestId('modal-dialog');
-}
-
-/**
- * Wait for modal to be visible.
- * @param {import('@playwright/test').Page} page
- * @param {number} [timeout]
- */
-async function waitForModal(page, timeout = TIMEOUTS.DEFAULT) {
-  await expect(getModal(page)).toBeVisible({ timeout });
-}
-
-/**
- * Wait for modal to close.
- * @param {import('@playwright/test').Page} page
- * @param {number} [timeout]
- */
-async function waitForModalClose(page, timeout = TIMEOUTS.DEFAULT) {
-  await expect(getModal(page)).not.toBeVisible({ timeout });
-}
-
-// Table row helper (used only by datasets)
-
-/**
- * Get a table row by its text content.
- * @param {import('@playwright/test').Page} page
- * @param {string} text
- * @returns {import('@playwright/test').Locator}
- */
-function getTableRow(page, text) {
-  return page.getByTestId('data-table').locator('tbody tr').filter({ hasText: text });
-}
-
-// Cleanup helper
-
-/**
- * Check if cleanup should be skipped (e.g., for debugging).
- * Set SKIP_CLEANUP=1 environment variable to skip cleanup.
- *
- * @returns {boolean}
- */
-function shouldSkipCleanup() {
-  return process.env.SKIP_CLEANUP === '1' || process.env.SKIP_CLEANUP === 'true';
-}
-
-/**
- * Navigate to datasets for a module.
- * @param {import('@playwright/test').Page} page
- * @param {string} moduleId
- */
-export async function navigateToDatasets(page, moduleId) {
-  await navigateTo(page, `/agents/${moduleId}/datasets`);
-}
+import { TIMEOUTS } from '../../helpers.js';
 
 /**
  * Open the create dataset modal.
@@ -73,7 +11,7 @@ export async function navigateToDatasets(page, moduleId) {
  */
 export async function openCreateDatasetModal(page) {
   await page.getByTestId('btn-create-dataset').first().click();
-  await waitForModal(page);
+  await expect(page.getByTestId('modal-dialog')).toBeVisible({ timeout: TIMEOUTS.DEFAULT });
 }
 
 /**
@@ -85,21 +23,21 @@ export async function createDataset(page, name) {
   console.log(`Creating dataset: ${name}`);
   await openCreateDatasetModal(page);
 
-  const modal = getModal(page);
+  const modal = page.getByTestId('modal-dialog');
   await modal.getByTestId('input-dataset-name').fill(name);
   await modal.getByTestId('btn-submit-create-dataset').click();
-  await waitForModalClose(page, TIMEOUTS.NETWORK);
+  await expect(page.getByTestId('modal-dialog')).not.toBeVisible({ timeout: TIMEOUTS.NETWORK });
 
   // Verify dataset was created
   const searchInput = page.locator('input[placeholder*="Search" i]');
   if (await searchInput.isVisible().catch(() => false)) {
     await searchInput.fill(name);
     await page.waitForTimeout(500);
-    await expect(getTableRow(page, name)).toBeVisible();
+    await expect(page.getByTestId('data-table').locator('tbody tr').filter({ hasText: name })).toBeVisible();
     await searchInput.clear();
     await page.waitForTimeout(300);
   } else {
-    await expect(getTableRow(page, name)).toBeVisible();
+    await expect(page.getByTestId('data-table').locator('tbody tr').filter({ hasText: name })).toBeVisible();
   }
 
   console.log(`Successfully created dataset: ${name}`);
@@ -111,7 +49,7 @@ export async function createDataset(page, name) {
  * @param {string} name - The dataset name
  */
 export async function deleteDataset(page, name) {
-  if (shouldSkipCleanup()) {
+  if (process.env.SKIP_CLEANUP === '1' || process.env.SKIP_CLEANUP === 'true') {
     console.log(`Skipping cleanup: Keeping dataset "${name}"`);
     return;
   }
@@ -136,7 +74,7 @@ export async function deleteDataset(page, name) {
   }
 
   // Find and click delete
-  const row = getTableRow(page, name);
+  const row = page.getByTestId('data-table').locator('tbody tr').filter({ hasText: name });
   await row.getByTestId('btn-delete-dataset').click();
   await page.waitForTimeout(500);
 

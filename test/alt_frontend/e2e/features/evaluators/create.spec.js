@@ -5,8 +5,7 @@
  * Tests evaluator creation modal, form validation, and submission.
  */
 import { test, expect } from '../../setup/test-fixtures.js';
-import { TIMEOUTS } from '../../helpers.js';
-import { navigateToEvaluators } from './evaluators_helpers.js';
+import { TIMEOUTS, navigateTo } from '../../helpers.js';
 
 test.describe('Evaluator Creation', () => {
   test('create evaluator modal shows builder selection', async ({ moduleId, page }) => {
@@ -15,7 +14,7 @@ test.describe('Evaluator Creation', () => {
       return;
     }
 
-    await navigateToEvaluators(page, moduleId);
+    await navigateTo(page, `/agents/${moduleId}/evaluators`);
 
     const createButton = page.getByTestId('btn-create-evaluator');
     if (!(await createButton.first().isVisible().catch(() => false))) {
@@ -54,7 +53,7 @@ test.describe('Evaluator Creation', () => {
       return;
     }
 
-    await navigateToEvaluators(page, moduleId);
+    await navigateTo(page, `/agents/${moduleId}/evaluators`);
 
     const createButton = page.getByTestId('btn-create-evaluator');
     if (!(await createButton.first().isVisible().catch(() => false))) {
@@ -96,7 +95,7 @@ test.describe('Evaluator Creation', () => {
       return;
     }
 
-    await navigateToEvaluators(page, moduleId);
+    await navigateTo(page, `/agents/${moduleId}/evaluators`);
 
     const createButton = page.getByTestId('btn-create-evaluator');
     if (!(await createButton.first().isVisible().catch(() => false))) {

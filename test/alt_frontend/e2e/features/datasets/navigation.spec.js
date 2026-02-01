@@ -3,8 +3,7 @@
  * Tests for dataset navigation.
  */
 import { test, expect } from '../../setup/test-fixtures.js';
-import { waitForLoadingToFinish } from '../../helpers.js';
-import { navigateToDatasets } from './datasets_helpers.js';
+import { waitForLoadingToFinish, navigateTo } from '../../helpers.js';
 
 test.describe('Dataset Navigation', () => {
   test('click row navigates to dataset detail', async ({ moduleId, page }) => {
@@ -13,7 +12,7 @@ test.describe('Dataset Navigation', () => {
       return;
     }
 
-    await navigateToDatasets(page, moduleId);
+    await navigateTo(page, `/agents/${moduleId}/datasets`);
     expect(page.url()).toContain(`#/agents/${moduleId}/datasets`);
 
     await waitForLoadingToFinish(page);

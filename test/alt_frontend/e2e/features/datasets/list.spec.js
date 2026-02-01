@@ -3,8 +3,7 @@
  * Tests for datasets list display and search functionality.
  */
 import { test, expect } from '../../setup/test-fixtures.js';
-import { TIMEOUTS, hasTable, hasEmptyState } from '../../helpers.js';
-import { navigateToDatasets } from './datasets_helpers.js';
+import { TIMEOUTS, hasTable, hasEmptyState, navigateTo } from '../../helpers.js';
 
 test.describe('Datasets List', () => {
   test('displays datasets or empty state', async ({ moduleId, page }) => {
@@ -13,7 +12,7 @@ test.describe('Datasets List', () => {
       return;
     }
 
-    await navigateToDatasets(page, moduleId);
+    await navigateTo(page, `/agents/${moduleId}/datasets`);
 
     expect(page.url()).toContain(`#/agents/${moduleId}/datasets`);
 
@@ -30,7 +29,7 @@ test.describe('Datasets List', () => {
       return;
     }
 
-    await navigateToDatasets(page, moduleId);
+    await navigateTo(page, `/agents/${moduleId}/datasets`);
     expect(page.url()).toContain(`#/agents/${moduleId}/datasets`);
 
     const searchInput = page.locator('input[placeholder*="Search" i]');

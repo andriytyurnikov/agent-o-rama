@@ -5,8 +5,7 @@
  * Tests evaluator deletion and viewing details.
  */
 import { test, expect } from '../../setup/test-fixtures.js';
-import { TIMEOUTS, hasTable } from '../../helpers.js';
-import { navigateToEvaluators } from './evaluators_helpers.js';
+import { TIMEOUTS, hasTable, navigateTo } from '../../helpers.js';
 
 test.describe('Evaluator Actions', () => {
   test('delete evaluator shows confirmation', async ({ moduleId, page }) => {
@@ -15,7 +14,7 @@ test.describe('Evaluator Actions', () => {
       return;
     }
 
-    await navigateToEvaluators(page, moduleId);
+    await navigateTo(page, `/agents/${moduleId}/evaluators`);
 
     const tableVisible = await hasTable(page);
     if (!tableVisible) {
@@ -58,7 +57,7 @@ test.describe('Evaluator Actions', () => {
       return;
     }
 
-    await navigateToEvaluators(page, moduleId);
+    await navigateTo(page, `/agents/${moduleId}/evaluators`);
 
     const tableVisible = await hasTable(page);
     if (!tableVisible) {

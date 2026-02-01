@@ -6,8 +6,7 @@
  * Note: Analytics is only available at agent level, not module level.
  */
 import { test, expect } from '../../setup/test-fixtures.js';
-import { TIMEOUTS, waitForLoadingToFinish } from '../../helpers.js';
-import { navigateToModule } from './analytics_helpers.js';
+import { TIMEOUTS, waitForLoadingToFinish, navigateTo } from '../../helpers.js';
 
 test.describe('Analytics Dashboard', () => {
   test('analytics page loads with charts or stats', async ({ moduleId, page }) => {
@@ -17,7 +16,7 @@ test.describe('Analytics Dashboard', () => {
     }
 
     // Analytics requires an agent - navigate to module first, then agent
-    await navigateToModule(page, moduleId);
+    await navigateTo(page, `/agents/${moduleId}`);
 
     const dataTable = page.getByTestId('data-table');
 
@@ -57,7 +56,7 @@ test.describe('Analytics Dashboard', () => {
     }
 
     // Navigate through module to agent to analytics
-    await navigateToModule(page, moduleId);
+    await navigateTo(page, `/agents/${moduleId}`);
 
     const dataTable = page.getByTestId('data-table');
 
@@ -101,7 +100,7 @@ test.describe('Analytics Dashboard', () => {
     }
 
     // Navigate to analytics
-    await navigateToModule(page, moduleId);
+    await navigateTo(page, `/agents/${moduleId}`);
 
     const dataTable = page.getByTestId('data-table');
 
@@ -148,7 +147,7 @@ test.describe('Analytics Dashboard', () => {
     }
 
     // Navigate to analytics
-    await navigateToModule(page, moduleId);
+    await navigateTo(page, `/agents/${moduleId}`);
 
     const dataTable = page.getByTestId('data-table');
 
@@ -202,7 +201,7 @@ test.describe('Analytics Dashboard', () => {
     }
 
     // Navigate to analytics
-    await navigateToModule(page, moduleId);
+    await navigateTo(page, `/agents/${moduleId}`);
 
     const dataTable = page.getByTestId('data-table');
 
@@ -240,7 +239,7 @@ test.describe('Analytics Dashboard', () => {
     }
 
     // Navigate to analytics
-    await navigateToModule(page, moduleId);
+    await navigateTo(page, `/agents/${moduleId}`);
 
     const dataTable = page.getByTestId('data-table');
 

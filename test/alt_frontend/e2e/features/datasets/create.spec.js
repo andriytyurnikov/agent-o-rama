@@ -3,8 +3,7 @@
  * Tests for dataset creation.
  */
 import { test, expect } from '../../setup/test-fixtures.js';
-import { TIMEOUTS, waitForLoadingToFinish } from '../../helpers.js';
-import { navigateToDatasets } from './datasets_helpers.js';
+import { TIMEOUTS, waitForLoadingToFinish, navigateTo } from '../../helpers.js';
 
 test.describe('Dataset Creation', () => {
   test('create button opens modal', async ({ moduleId, page }) => {
@@ -13,7 +12,7 @@ test.describe('Dataset Creation', () => {
       return;
     }
 
-    await navigateToDatasets(page, moduleId);
+    await navigateTo(page, `/agents/${moduleId}/datasets`);
     expect(page.url()).toContain(`#/agents/${moduleId}/datasets`);
 
     const createButton = page.getByTestId('btn-create-dataset');
@@ -44,7 +43,7 @@ test.describe('Dataset Creation', () => {
       return;
     }
 
-    await navigateToDatasets(page, moduleId);
+    await navigateTo(page, `/agents/${moduleId}/datasets`);
     expect(page.url()).toContain(`#/agents/${moduleId}/datasets`);
 
     const createButton = page.getByTestId('btn-create-dataset');

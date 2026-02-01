@@ -6,8 +6,7 @@
  * Uses ONLY data-testid attributes for all locators.
  */
 import { test, expect } from '../../setup/test-fixtures.js';
-import { TIMEOUTS, waitForLoadingToFinish } from '../../helpers.js';
-import { navigateToModule } from './invocations_helpers.js';
+import { TIMEOUTS, waitForLoadingToFinish, navigateTo } from '../../helpers.js';
 
 test.describe('Invocations List', () => {
   test('invocations list renders on agent detail page', async ({ moduleId, page }) => {
@@ -16,7 +15,7 @@ test.describe('Invocations List', () => {
       return;
     }
 
-    await navigateToModule(page, moduleId);
+    await navigateTo(page, `/agents/${moduleId}`);
     expect(page.url()).toContain(`#/agents/${moduleId}`);
 
     // Navigate to first agent
@@ -48,7 +47,7 @@ test.describe('Invocations List', () => {
       return;
     }
 
-    await navigateToModule(page, moduleId);
+    await navigateTo(page, `/agents/${moduleId}`);
     expect(page.url()).toContain(`#/agents/${moduleId}`);
 
     const dataTable = page.getByTestId('data-table');

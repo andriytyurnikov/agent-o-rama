@@ -5,8 +5,7 @@
  * Tests evaluator list display, table columns, filtering, and search.
  */
 import { test, expect } from '../../setup/test-fixtures.js';
-import { TIMEOUTS, waitForLoadingToFinish, hasTable, hasEmptyState } from '../../helpers.js';
-import { navigateToEvaluators } from './evaluators_helpers.js';
+import { TIMEOUTS, waitForLoadingToFinish, hasTable, hasEmptyState, navigateTo } from '../../helpers.js';
 
 test.describe('Evaluators List', () => {
   test('list evaluators for module', async ({ moduleId, page }) => {
@@ -15,7 +14,7 @@ test.describe('Evaluators List', () => {
       return;
     }
 
-    await navigateToEvaluators(page, moduleId);
+    await navigateTo(page, `/agents/${moduleId}/evaluators`);
 
     // Wait for page to settle
     await page.waitForTimeout(TIMEOUTS.ANIMATION);
@@ -37,7 +36,7 @@ test.describe('Evaluators List', () => {
       return;
     }
 
-    await navigateToEvaluators(page, moduleId);
+    await navigateTo(page, `/agents/${moduleId}/evaluators`);
 
     const tableVisible = await hasTable(page);
     if (!tableVisible) {
@@ -61,7 +60,7 @@ test.describe('Evaluators List', () => {
       return;
     }
 
-    await navigateToEvaluators(page, moduleId);
+    await navigateTo(page, `/agents/${moduleId}/evaluators`);
 
     // Look for type filter dropdown (select element)
     const typeDropdown = page.locator('select.select-bordered');
@@ -98,7 +97,7 @@ test.describe('Evaluators List', () => {
       return;
     }
 
-    await navigateToEvaluators(page, moduleId);
+    await navigateTo(page, `/agents/${moduleId}/evaluators`);
 
     const searchInput = page.getByTestId('input-search-evaluators');
     if (!(await searchInput.isVisible().catch(() => false))) {

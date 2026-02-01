@@ -6,8 +6,7 @@
  * Uses ONLY data-testid attributes for all locators.
  */
 import { test, expect } from '../../setup/test-fixtures.js';
-import { TIMEOUTS, waitForLoadingToFinish } from '../../helpers.js';
-import { navigateToModule } from './invocations_helpers.js';
+import { TIMEOUTS, waitForLoadingToFinish, navigateTo } from '../../helpers.js';
 
 test.describe('Agent Invocation Form', () => {
   test('run agent with valid JSON args', async ({ moduleId, page }) => {
@@ -16,7 +15,7 @@ test.describe('Agent Invocation Form', () => {
       return;
     }
 
-    await navigateToModule(page, moduleId);
+    await navigateTo(page, `/agents/${moduleId}`);
     expect(page.url()).toContain(`#/agents/${moduleId}`);
 
     // Find an agent to run
@@ -74,7 +73,7 @@ test.describe('Agent Invocation Form', () => {
       return;
     }
 
-    await navigateToModule(page, moduleId);
+    await navigateTo(page, `/agents/${moduleId}`);
     expect(page.url()).toContain(`#/agents/${moduleId}`);
 
     // Navigate to agent detail
@@ -134,7 +133,7 @@ test.describe('Invocation Detail View', () => {
     }
 
     // Navigate to an agent
-    await navigateToModule(page, moduleId);
+    await navigateTo(page, `/agents/${moduleId}`);
     expect(page.url()).toContain(`#/agents/${moduleId}`);
 
     const dataTable = page.getByTestId('data-table');

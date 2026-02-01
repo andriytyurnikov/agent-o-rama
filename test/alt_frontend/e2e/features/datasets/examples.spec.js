@@ -5,8 +5,7 @@
  * Prerequisites: A dataset must exist. Tests create one if needed.
  */
 import { test, expect } from '../../setup/test-fixtures.js';
-import { TIMEOUTS, waitForLoadingToFinish } from '../../helpers.js';
-import { navigateToDatasets } from './datasets_helpers.js';
+import { TIMEOUTS, waitForLoadingToFinish, navigateTo } from '../../helpers.js';
 
 /**
  * Navigate to examples page for a dataset.
@@ -15,7 +14,7 @@ import { navigateToDatasets } from './datasets_helpers.js';
  * @param {string} moduleId
  */
 async function navigateToExamples(page, moduleId) {
-  await navigateToDatasets(page, moduleId);
+  await navigateTo(page, `/agents/${moduleId}/datasets`);
 
   // Check for existing datasets
   const dataTable = page.getByTestId('data-table');

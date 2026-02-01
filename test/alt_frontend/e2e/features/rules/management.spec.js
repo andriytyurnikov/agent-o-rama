@@ -5,8 +5,7 @@
  * Tests rules listing, detail view, and action log navigation.
  */
 import { test, expect } from '../../setup/test-fixtures.js';
-import { TIMEOUTS, waitForLoadingToFinish } from '../../helpers.js';
-import { navigateToModule } from './rules_helpers.js';
+import { TIMEOUTS, waitForLoadingToFinish, navigateTo } from '../../helpers.js';
 
 test.describe('Rules List', () => {
   test('rules list renders with rule details', async ({ moduleId, page }) => {
@@ -15,7 +14,7 @@ test.describe('Rules List', () => {
       return;
     }
 
-    await navigateToModule(page, moduleId);
+    await navigateTo(page, `/agents/${moduleId}`);
 
     const dataTable = page.getByTestId('data-table');
 
@@ -55,7 +54,7 @@ test.describe('Rules List', () => {
       return;
     }
 
-    await navigateToModule(page, moduleId);
+    await navigateTo(page, `/agents/${moduleId}`);
 
     const dataTable = page.getByTestId('data-table');
 
@@ -105,7 +104,7 @@ test.describe('Rule Details', () => {
       return;
     }
 
-    await navigateToModule(page, moduleId);
+    await navigateTo(page, `/agents/${moduleId}`);
 
     const dataTable = page.getByTestId('data-table');
     const modal = page.getByTestId('modal-dialog');
@@ -175,7 +174,7 @@ test.describe('Rule Details', () => {
       return;
     }
 
-    await navigateToModule(page, moduleId);
+    await navigateTo(page, `/agents/${moduleId}`);
 
     const dataTable = page.getByTestId('data-table');
     const modal = page.getByTestId('modal-dialog');
@@ -230,7 +229,7 @@ test.describe('Action Log', () => {
       return;
     }
 
-    await navigateToModule(page, moduleId);
+    await navigateTo(page, `/agents/${moduleId}`);
 
     const dataTable = page.getByTestId('data-table');
 
@@ -285,7 +284,7 @@ test.describe('Action Log', () => {
       return;
     }
 
-    await navigateToModule(page, moduleId);
+    await navigateTo(page, `/agents/${moduleId}`);
 
     const dataTable = page.getByTestId('data-table');
 

@@ -6,8 +6,7 @@
  * Uses ONLY data-testid attributes for all locators.
  */
 import { test, expect } from '../../setup/test-fixtures.js';
-import { TIMEOUTS, waitForLoadingToFinish } from '../../helpers.js';
-import { navigateToModule } from './agents_helpers.js';
+import { TIMEOUTS, waitForLoadingToFinish, navigateTo } from '../../helpers.js';
 
 test.describe('Agent Navigation', () => {
   test.beforeEach(async ({ page }) => {
@@ -156,7 +155,7 @@ test.describe('Module Navigation', () => {
       return;
     }
 
-    await navigateToModule(page, moduleId);
+    await navigateTo(page, `/agents/${moduleId}`);
     expect(page.url()).toContain(`#/agents/${moduleId}`);
 
     // Module-specific navigation should be visible (if testids exist)
@@ -178,7 +177,7 @@ test.describe('Module Navigation', () => {
       return;
     }
 
-    await navigateToModule(page, moduleId);
+    await navigateTo(page, `/agents/${moduleId}`);
     expect(page.url()).toContain(`#/agents/${moduleId}`);
 
     // Check if nav link exists
@@ -206,7 +205,7 @@ test.describe('Agent Detail Navigation', () => {
       return;
     }
 
-    await navigateToModule(page, moduleId);
+    await navigateTo(page, `/agents/${moduleId}`);
     expect(page.url()).toContain(`#/agents/${moduleId}`);
 
     // Look for an agent row in the table
@@ -241,7 +240,7 @@ test.describe('Agent Detail Navigation', () => {
       return;
     }
 
-    await navigateToModule(page, moduleId);
+    await navigateTo(page, `/agents/${moduleId}`);
     expect(page.url()).toContain(`#/agents/${moduleId}`);
 
     // Try to navigate to an agent
@@ -287,7 +286,7 @@ test.describe('Agent Detail Navigation', () => {
       return;
     }
 
-    await navigateToModule(page, moduleId);
+    await navigateTo(page, `/agents/${moduleId}`);
     expect(page.url()).toContain(`#/agents/${moduleId}`);
 
     const dataTable = page.getByTestId('data-table');

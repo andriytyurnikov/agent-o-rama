@@ -5,8 +5,7 @@
  * Tests feedback queues, queue navigation, and feedback submission.
  */
 import { test, expect } from '../../setup/test-fixtures.js';
-import { TIMEOUTS, waitForLoadingToFinish, hasTable, hasEmptyState } from '../../helpers.js';
-import { navigateToHumanFeedback, navigateToHumanMetrics } from './human_feedback_helpers.js';
+import { TIMEOUTS, waitForLoadingToFinish, hasTable, hasEmptyState, navigateTo } from '../../helpers.js';
 
 test.describe('Human Feedback Queues', () => {
   test('list feedback queues for module', async ({ moduleId, page }) => {
@@ -15,7 +14,7 @@ test.describe('Human Feedback Queues', () => {
       return;
     }
 
-    await navigateToHumanFeedback(page, moduleId);
+    await navigateTo(page, `/agents/${moduleId}/human-feedback-queues`);
 
     const dataTable = page.getByTestId('data-table');
 
@@ -39,7 +38,7 @@ test.describe('Human Feedback Queues', () => {
       return;
     }
 
-    await navigateToHumanFeedback(page, moduleId);
+    await navigateTo(page, `/agents/${moduleId}/human-feedback-queues`);
 
     // Human feedback is shown as a single page - this test checks that the page is functional
     const hasLayout = await page.getByTestId('app-layout').isVisible().catch(() => false);
@@ -52,7 +51,7 @@ test.describe('Human Feedback Queues', () => {
       return;
     }
 
-    await navigateToHumanFeedback(page, moduleId);
+    await navigateTo(page, `/agents/${moduleId}/human-feedback-queues`);
 
     const dataTable = page.getByTestId('data-table');
 
@@ -96,7 +95,7 @@ test.describe('Feedback Submission', () => {
       return;
     }
 
-    await navigateToHumanFeedback(page, moduleId);
+    await navigateTo(page, `/agents/${moduleId}/human-feedback-queues`);
 
     const dataTable = page.getByTestId('data-table');
 
@@ -140,7 +139,7 @@ test.describe('Feedback Submission', () => {
       return;
     }
 
-    await navigateToHumanFeedback(page, moduleId);
+    await navigateTo(page, `/agents/${moduleId}/human-feedback-queues`);
 
     const dataTable = page.getByTestId('data-table');
 
@@ -203,7 +202,7 @@ test.describe('Feedback Submission', () => {
       return;
     }
 
-    await navigateToHumanFeedback(page, moduleId);
+    await navigateTo(page, `/agents/${moduleId}/human-feedback-queues`);
 
     const dataTable = page.getByTestId('data-table');
 
@@ -293,7 +292,7 @@ test.describe('Human Metrics', () => {
     }
 
     // Navigate to metrics section
-    await navigateToHumanMetrics(page, moduleId);
+    await navigateTo(page, `/agents/${moduleId}/human-metrics`);
 
     const dataTable = page.getByTestId('data-table');
 
@@ -321,7 +320,7 @@ test.describe('Human Metrics', () => {
       return;
     }
 
-    await navigateToHumanMetrics(page, moduleId);
+    await navigateTo(page, `/agents/${moduleId}/human-metrics`);
 
     // Find create button
     const createButton = page.getByTestId('btn-create-metric');

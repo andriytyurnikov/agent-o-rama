@@ -5,8 +5,7 @@
  * Tests experiment listing, status display, and navigation to detail.
  */
 import { test, expect } from '../../setup/test-fixtures.js';
-import { TIMEOUTS, waitForLoadingToFinish } from '../../helpers.js';
-import { navigateToModule, navigateToDatasets } from './experiments_helpers.js';
+import { TIMEOUTS, waitForLoadingToFinish, navigateTo } from '../../helpers.js';
 
 test.describe('Experiments List', () => {
   test('experiments list renders with status badges', async ({ moduleId, page }) => {
@@ -15,10 +14,10 @@ test.describe('Experiments List', () => {
       return;
     }
 
-    await navigateToModule(page, moduleId);
+    await navigateTo(page, `/agents/${moduleId}`);
 
     // Navigate to datasets first (experiments are under datasets)
-    await navigateToDatasets(page, moduleId);
+    await navigateTo(page, `/agents/${moduleId}/datasets`);
 
     const dataTable = page.getByTestId('data-table');
 
@@ -91,8 +90,8 @@ test.describe('Experiments List', () => {
       return;
     }
 
-    await navigateToModule(page, moduleId);
-    await navigateToDatasets(page, moduleId);
+    await navigateTo(page, `/agents/${moduleId}`);
+    await navigateTo(page, `/agents/${moduleId}/datasets`);
 
     const dataTable = page.getByTestId('data-table');
 
@@ -154,8 +153,8 @@ test.describe('Experiments List', () => {
       return;
     }
 
-    await navigateToModule(page, moduleId);
-    await navigateToDatasets(page, moduleId);
+    await navigateTo(page, `/agents/${moduleId}`);
+    await navigateTo(page, `/agents/${moduleId}/datasets`);
 
     const dataTable = page.getByTestId('data-table');
 
@@ -209,8 +208,8 @@ test.describe('Experiments List', () => {
       return;
     }
 
-    await navigateToModule(page, moduleId);
-    await navigateToDatasets(page, moduleId);
+    await navigateTo(page, `/agents/${moduleId}`);
+    await navigateTo(page, `/agents/${moduleId}/datasets`);
 
     const dataTable = page.getByTestId('data-table');
 
@@ -267,8 +266,8 @@ test.describe('Experiment Creation', () => {
       return;
     }
 
-    await navigateToModule(page, moduleId);
-    await navigateToDatasets(page, moduleId);
+    await navigateTo(page, `/agents/${moduleId}`);
+    await navigateTo(page, `/agents/${moduleId}/datasets`);
 
     const dataTable = page.getByTestId('data-table');
     const modal = page.getByTestId('modal-dialog');
