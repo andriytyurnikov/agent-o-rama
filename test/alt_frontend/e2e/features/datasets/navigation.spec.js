@@ -4,7 +4,7 @@
  */
 import { test, expect } from '../../setup/test-fixtures.js';
 import { waitForLoadingToFinish } from '../../helpers/actions.js';
-import { navigateToDatasets } from '../../helpers/navigation.js';
+import { navigateToDatasets } from './datasets_helpers.js';
 
 test.describe('Dataset Navigation', () => {
   test('click row navigates to dataset detail', async ({ moduleId, page }) => {

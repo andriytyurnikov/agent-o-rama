@@ -4,8 +4,8 @@
  */
 import { test, expect } from '../../setup/test-fixtures.js';
 import { TIMEOUTS } from '../../helpers/selectors.js';
-import { navigateToDatasets } from '../../helpers/navigation.js';
 import { hasTable, hasEmptyState } from '../../helpers/table.js';
+import { navigateToDatasets } from './datasets_helpers.js';
 
 test.describe('Datasets List', () => {
   test('displays datasets or empty state', async ({ moduleId, page }) => {

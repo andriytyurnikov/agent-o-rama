@@ -8,7 +8,7 @@
 import { test, expect } from '../../setup/test-fixtures.js';
 import { TIMEOUTS } from '../../helpers/selectors.js';
 import { waitForConnection, waitForLoadingToFinish } from '../../helpers/actions.js';
-import { navigateToModule } from '../../helpers/navigation.js';
+import { navigateToModule } from './agents_helpers.js';
 
 test.describe('Agent Navigation', () => {
   test.beforeEach(async ({ page }) => {

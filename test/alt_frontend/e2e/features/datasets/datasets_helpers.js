@@ -1,12 +1,21 @@
 // @ts-check
 /**
- * Dataset helper functions for alt-frontend E2E tests.
+ * Helper functions for datasets feature E2E tests.
  */
 import { expect } from '@playwright/test';
-import { navigateToDatasets } from './navigation.js';
-import { getTableRow } from './table.js';
-import { getModal, waitForModal, waitForModalClose } from './modal.js';
-import { shouldSkipCleanup, TIMEOUTS } from './actions.js';
+import { navigateTo } from '../../helpers/navigation.js';
+import { getTableRow } from '../../helpers/table.js';
+import { getModal, waitForModal, waitForModalClose } from '../../helpers/modal.js';
+import { shouldSkipCleanup, TIMEOUTS } from '../../helpers/actions.js';
+
+/**
+ * Navigate to datasets for a module.
+ * @param {import('@playwright/test').Page} page
+ * @param {string} moduleId
+ */
+export async function navigateToDatasets(page, moduleId) {
+  await navigateTo(page, `/agents/${moduleId}/datasets`);
+}
 
 /**
  * Open the create dataset modal.
@@ -91,6 +100,3 @@ export async function deleteDataset(page, name) {
   await expect(row).not.toBeVisible({ timeout: TIMEOUTS.DEFAULT });
   console.log(`Successfully deleted dataset: ${name}`);
 }
-
-// Re-export navigation for convenience
-export { navigateToDatasets };

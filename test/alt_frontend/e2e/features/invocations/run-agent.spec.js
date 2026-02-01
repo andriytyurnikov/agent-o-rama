@@ -8,7 +8,7 @@
 import { test, expect } from '../../setup/test-fixtures.js';
 import { TIMEOUTS } from '../../helpers/selectors.js';
 import { waitForLoadingToFinish } from '../../helpers/actions.js';
-import { navigateToModule } from '../../helpers/navigation.js';
+import { navigateToModule } from './invocations_helpers.js';
 
 test.describe('Agent Invocation Form', () => {
   test('run agent with valid JSON args', async ({ moduleId, page }) => {

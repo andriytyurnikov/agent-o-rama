@@ -7,8 +7,8 @@
 import { test, expect } from '../../setup/test-fixtures.js';
 import { TIMEOUTS } from '../../helpers/selectors.js';
 import { waitForLoadingToFinish } from '../../helpers/actions.js';
-import { navigateToEvaluators } from '../../helpers/navigation.js';
 import { hasTable, hasEmptyState } from '../../helpers/table.js';
+import { navigateToEvaluators } from './evaluators_helpers.js';
 
 test.describe('Evaluators List', () => {
   test('list evaluators for module', async ({ moduleId, page }) => {

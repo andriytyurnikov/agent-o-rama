@@ -7,8 +7,8 @@
 import { test, expect } from '../../setup/test-fixtures.js';
 import { TIMEOUTS } from '../../helpers/selectors.js';
 import { waitForLoadingToFinish } from '../../helpers/actions.js';
-import { navigateToHumanFeedback, navigateToHumanMetrics } from '../../helpers/navigation.js';
 import { hasTable, hasEmptyState } from '../../helpers/table.js';
+import { navigateToHumanFeedback, navigateToHumanMetrics } from './human_feedback_helpers.js';
 
 test.describe('Human Feedback Queues', () => {
   test('list feedback queues for module', async ({ moduleId, page }) => {

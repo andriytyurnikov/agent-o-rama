@@ -8,7 +8,7 @@
 import { test, expect } from '../../setup/test-fixtures.js';
 import { TIMEOUTS } from '../../helpers/selectors.js';
 import { waitForLoadingToFinish } from '../../helpers/actions.js';
-import { navigateToModule } from '../../helpers/navigation.js';
+import { navigateToModule } from './invocations_helpers.js';
 
 test.describe('Invocations List', () => {
   test('invocations list renders on agent detail page', async ({ moduleId, page }) => {

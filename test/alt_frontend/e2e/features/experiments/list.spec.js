@@ -7,7 +7,7 @@
 import { test, expect } from '../../setup/test-fixtures.js';
 import { TIMEOUTS } from '../../helpers/selectors.js';
 import { waitForLoadingToFinish } from '../../helpers/actions.js';
-import { navigateToModule, navigateToDatasets } from '../../helpers/navigation.js';
+import { navigateToModule, navigateToDatasets } from './experiments_helpers.js';
 
 test.describe('Experiments List', () => {
   test('experiments list renders with status badges', async ({ moduleId, page }) => {

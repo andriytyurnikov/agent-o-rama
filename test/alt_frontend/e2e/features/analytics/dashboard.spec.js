@@ -8,7 +8,7 @@
 import { test, expect } from '../../setup/test-fixtures.js';
 import { TIMEOUTS } from '../../helpers/selectors.js';
 import { waitForLoadingToFinish } from '../../helpers/actions.js';
-import { navigateToModule } from '../../helpers/navigation.js';
+import { navigateToModule } from './analytics_helpers.js';
 
 test.describe('Analytics Dashboard', () => {
   test('analytics page loads with charts or stats', async ({ moduleId, page }) => {

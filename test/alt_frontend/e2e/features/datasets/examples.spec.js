@@ -7,7 +7,7 @@
 import { test, expect } from '../../setup/test-fixtures.js';
 import { TIMEOUTS } from '../../helpers/selectors.js';
 import { waitForLoadingToFinish } from '../../helpers/actions.js';
-import { navigateToDatasets } from '../../helpers/navigation.js';
+import { navigateToDatasets } from './datasets_helpers.js';
 
 /**
  * Navigate to examples page for a dataset.
