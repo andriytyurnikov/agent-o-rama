@@ -3,8 +3,7 @@
  * Tests for datasets list display and search functionality.
  */
 import { test, expect } from '../../setup/test-fixtures.js';
-import { TIMEOUTS } from '../../helpers/selectors.js';
-import { hasTable, hasEmptyState } from '../../helpers/table.js';
+import { TIMEOUTS, hasTable, hasEmptyState } from '../../helpers.js';
 import { navigateToDatasets } from './datasets_helpers.js';
 
 test.describe('Datasets List', () => {

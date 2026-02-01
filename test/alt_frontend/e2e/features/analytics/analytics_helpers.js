@@ -2,7 +2,7 @@
 /**
  * Navigation helper functions for analytics feature E2E tests.
  */
-import { navigateTo } from '../../helpers/navigation.js';
+import { navigateTo } from '../../helpers.js';
 
 /**
  * Navigate to analytics for an agent.

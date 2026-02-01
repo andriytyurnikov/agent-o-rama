@@ -5,7 +5,7 @@
  * These are basic tests that verify the app loads and navigation works.
  */
 import { test, expect } from '../setup/test-fixtures.js';
-import { waitForLoadingToFinish } from '../helpers/actions.js';
+import { waitForLoadingToFinish } from '../helpers.js';
 
 test.describe('Navigation Smoke Tests', () => {
   // Alt-frontend uses hash-based routing, so we use the baseURL directly

@@ -3,7 +3,7 @@
  * Tests for dataset navigation.
  */
 import { test, expect } from '../../setup/test-fixtures.js';
-import { waitForLoadingToFinish } from '../../helpers/actions.js';
+import { waitForLoadingToFinish } from '../../helpers.js';
 import { navigateToDatasets } from './datasets_helpers.js';
 
 test.describe('Dataset Navigation', () => {

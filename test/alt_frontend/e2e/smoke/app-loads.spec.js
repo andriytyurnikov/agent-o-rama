@@ -3,7 +3,7 @@
  * Basic smoke tests to verify the app loads correctly.
  */
 import { test, expect } from '../setup/test-fixtures.js';
-import { TIMEOUTS } from '../helpers/selectors.js';
+import { TIMEOUTS } from '../helpers.js';
 
 test.describe('App Loading Smoke Tests', () => {
   test('app should load without errors', async ({ page }) => {

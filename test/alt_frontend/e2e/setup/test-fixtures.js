@@ -1,7 +1,6 @@
 // @ts-check
 import { test as base, expect } from '@playwright/test';
-import { waitForLoadingToFinish } from '../helpers/actions.js';
-import { getFirstTableRow } from '../helpers/table.js';
+import { waitForLoadingToFinish } from '../helpers.js';
 
 /**
  * Extended test fixtures for alt-frontend E2E tests.
@@ -29,7 +28,7 @@ export const test = base.extend({
     await waitForLoadingToFinish(page);
 
     // Try to open the first module
-    const firstRow = getFirstTableRow(page);
+    const firstRow = page.getByTestId('data-table').locator('tbody tr').first();
     if (!(await firstRow.isVisible().catch(() => false))) {
       await use(null);
       return;

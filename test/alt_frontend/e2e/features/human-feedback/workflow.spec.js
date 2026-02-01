@@ -5,9 +5,7 @@
  * Tests feedback queues, queue navigation, and feedback submission.
  */
 import { test, expect } from '../../setup/test-fixtures.js';
-import { TIMEOUTS } from '../../helpers/selectors.js';
-import { waitForLoadingToFinish } from '../../helpers/actions.js';
-import { hasTable, hasEmptyState } from '../../helpers/table.js';
+import { TIMEOUTS, waitForLoadingToFinish, hasTable, hasEmptyState } from '../../helpers.js';
 import { navigateToHumanFeedback, navigateToHumanMetrics } from './human_feedback_helpers.js';
 
 test.describe('Human Feedback Queues', () => {

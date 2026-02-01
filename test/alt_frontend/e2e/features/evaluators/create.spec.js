@@ -5,7 +5,7 @@
  * Tests evaluator creation modal, form validation, and submission.
  */
 import { test, expect } from '../../setup/test-fixtures.js';
-import { TIMEOUTS } from '../../helpers/selectors.js';
+import { TIMEOUTS } from '../../helpers.js';
 import { navigateToEvaluators } from './evaluators_helpers.js';
 
 test.describe('Evaluator Creation', () => {

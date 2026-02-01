@@ -5,8 +5,7 @@
  * Tests rules listing, detail view, and action log navigation.
  */
 import { test, expect } from '../../setup/test-fixtures.js';
-import { TIMEOUTS } from '../../helpers/selectors.js';
-import { waitForLoadingToFinish } from '../../helpers/actions.js';
+import { TIMEOUTS, waitForLoadingToFinish } from '../../helpers.js';
 import { navigateToModule } from './rules_helpers.js';
 
 test.describe('Rules List', () => {

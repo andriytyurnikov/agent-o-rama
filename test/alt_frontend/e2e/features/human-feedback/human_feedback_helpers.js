@@ -2,7 +2,7 @@
 /**
  * Navigation helper functions for human-feedback feature E2E tests.
  */
-import { navigateTo } from '../../helpers/navigation.js';
+import { navigateTo } from '../../helpers.js';
 
 /**
  * Navigate to human feedback queues for a module.

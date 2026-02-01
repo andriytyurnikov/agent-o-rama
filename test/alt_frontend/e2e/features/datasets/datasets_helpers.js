@@ -3,10 +3,60 @@
  * Helper functions for datasets feature E2E tests.
  */
 import { expect } from '@playwright/test';
-import { navigateTo } from '../../helpers/navigation.js';
-import { getTableRow } from '../../helpers/table.js';
-import { getModal, waitForModal, waitForModalClose } from '../../helpers/modal.js';
-import { shouldSkipCleanup, TIMEOUTS } from '../../helpers/actions.js';
+import { navigateTo, TIMEOUTS } from '../../helpers.js';
+
+// Modal helpers (used only by datasets)
+
+/**
+ * Get the modal dialog locator.
+ * @param {import('@playwright/test').Page} page
+ * @returns {import('@playwright/test').Locator}
+ */
+function getModal(page) {
+  return page.getByTestId('modal-dialog');
+}
+
+/**
+ * Wait for modal to be visible.
+ * @param {import('@playwright/test').Page} page
+ * @param {number} [timeout]
+ */
+async function waitForModal(page, timeout = TIMEOUTS.DEFAULT) {
+  await expect(getModal(page)).toBeVisible({ timeout });
+}
+
+/**
+ * Wait for modal to close.
+ * @param {import('@playwright/test').Page} page
+ * @param {number} [timeout]
+ */
+async function waitForModalClose(page, timeout = TIMEOUTS.DEFAULT) {
+  await expect(getModal(page)).not.toBeVisible({ timeout });
+}
+
+// Table row helper (used only by datasets)
+
+/**
+ * Get a table row by its text content.
+ * @param {import('@playwright/test').Page} page
+ * @param {string} text
+ * @returns {import('@playwright/test').Locator}
+ */
+function getTableRow(page, text) {
+  return page.getByTestId('data-table').locator('tbody tr').filter({ hasText: text });
+}
+
+// Cleanup helper
+
+/**
+ * Check if cleanup should be skipped (e.g., for debugging).
+ * Set SKIP_CLEANUP=1 environment variable to skip cleanup.
+ *
+ * @returns {boolean}
+ */
+function shouldSkipCleanup() {
+  return process.env.SKIP_CLEANUP === '1' || process.env.SKIP_CLEANUP === 'true';
+}
 
 /**
  * Navigate to datasets for a module.

@@ -5,8 +5,7 @@
  * Tests evaluator deletion and viewing details.
  */
 import { test, expect } from '../../setup/test-fixtures.js';
-import { TIMEOUTS } from '../../helpers/selectors.js';
-import { hasTable } from '../../helpers/table.js';
+import { TIMEOUTS, hasTable } from '../../helpers.js';
 import { navigateToEvaluators } from './evaluators_helpers.js';
 
 test.describe('Evaluator Actions', () => {

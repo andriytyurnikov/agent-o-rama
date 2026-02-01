@@ -5,8 +5,7 @@
  * Tests experiment listing, status display, and navigation to detail.
  */
 import { test, expect } from '../../setup/test-fixtures.js';
-import { TIMEOUTS } from '../../helpers/selectors.js';
-import { waitForLoadingToFinish } from '../../helpers/actions.js';
+import { TIMEOUTS, waitForLoadingToFinish } from '../../helpers.js';
 import { navigateToModule, navigateToDatasets } from './experiments_helpers.js';
 
 test.describe('Experiments List', () => {

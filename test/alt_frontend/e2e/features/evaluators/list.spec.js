@@ -5,9 +5,7 @@
  * Tests evaluator list display, table columns, filtering, and search.
  */
 import { test, expect } from '../../setup/test-fixtures.js';
-import { TIMEOUTS } from '../../helpers/selectors.js';
-import { waitForLoadingToFinish } from '../../helpers/actions.js';
-import { hasTable, hasEmptyState } from '../../helpers/table.js';
+import { TIMEOUTS, waitForLoadingToFinish, hasTable, hasEmptyState } from '../../helpers.js';
 import { navigateToEvaluators } from './evaluators_helpers.js';
 
 test.describe('Evaluators List', () => {
