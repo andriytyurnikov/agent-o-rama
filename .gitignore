@@ -31,8 +31,9 @@ node_modules/
 public/
 
 # compiled frontend output
-resource/main.js
-resource/manifest.edn
+resource/public/main.js
+resource/public/main*.js
+resource/public/manifest.edn
 
 # claude files
 CLAUDE.md
