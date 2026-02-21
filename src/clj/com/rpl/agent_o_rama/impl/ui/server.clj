@@ -35,12 +35,20 @@
         (str/includes? (str content-type) "text/html"))
     "no-cache"
 
-    ;; JS/CSS - cache for 1 year (use content hashing for cache busting)
+    ;; Content-hashed JS/CSS (main.A1B2C3D4.js) - cache forever
+    (and (or (str/ends-with? uri ".js")
+             (str/ends-with? uri ".css")
+             (str/includes? (str content-type) "javascript")
+             (str/includes? (str content-type) "text/css"))
+         (re-find #"\.[0-9a-fA-F]{8,}\." uri))
+    "public, max-age=31536000, immutable"
+
+    ;; Unhashed JS/CSS (dev mode) - always revalidate
     (or (str/ends-with? uri ".js")
         (str/ends-with? uri ".css")
         (str/includes? (str content-type) "javascript")
         (str/includes? (str content-type) "text/css"))
-    "public, max-age=31536000, immutable"
+    "no-cache"
 
     ;; Images and fonts - cache for 1 year
     (or (str/ends-with? uri ".png")
@@ -81,12 +89,29 @@
         (throw (ex-info "Could not read :output-name from manifest.edn" {:manifest manifest})))
       output-name)))
 
-(defn- render-index-html
-  "Renders index.html with the correct hashed JS filename."
+(defn- get-css-filename
+  "Reads the CSS manifest to get the hashed CSS filename.
+   Falls back to \"main.css\" for dev mode (no manifest)."
   []
-  (-> (io/resource "index.html")
-      slurp
-      (str/replace "{{MAIN_JS}}" (get-js-filename))))
+  (if-let [manifest-resource (io/resource "public/css-manifest.edn")]
+    (let [manifest (edn/read-string (slurp manifest-resource))
+          output-name (:output-name (first manifest))]
+      (or output-name "main.css"))
+    "main.css"))
+
+(defn- render-index-html
+  "Renders index.html with the correct hashed JS and CSS filenames."
+  []
+  (let [js-name  (get-js-filename)
+        css-name (get-css-filename)]
+    (when (and (re-find #"\.[0-9a-fA-F]{8,}\." js-name)
+               (not (re-find #"\.[0-9a-fA-F]{8,}\." css-name)))
+      (throw (ex-info "JS is content-hashed but CSS is not - CSS build may have failed"
+                      {:js js-name :css css-name})))
+    (-> (io/resource "index.html")
+        slurp
+        (str/replace "{{MAIN_JS}}" js-name)
+        (str/replace "{{MAIN_CSS}}" css-name))))
 
 (defn spa-index-handler
   "Serves the SPA index.html and ensures session cookie is set.
