@@ -6,6 +6,7 @@
   (:require
    [clojure.set :as set]
    [com.rpl.agent-o-rama :as aor]
+   [com.rpl.agent-o-rama.impl.evaluators :as evals]
    [com.rpl.agent-o-rama.impl.queries :as queries]
    [com.rpl.agent-o-rama.impl.types :as aor-types]
    [com.rpl.rama.aggs :as aggs]
@@ -171,15 +172,17 @@
           (loop [ret    []
                  params nil]
             (let [{:keys [agent-invokes pagination-params]}
-                  (foreign-invoke-query q i params)
+                 ;; Keep scan-page-size tight so this test exercises true
+                 ;; multi-request pagination instead of draining each task.
+                 (foreign-invoke-query q i 10 params nil)
                   ret (conj ret agent-invokes)]
               (if (every? nil? (vals pagination-params))
                 ret
                 (recur ret pagination-params)
               ))))
 
-        ;; verify multiple pages
-        (is (> (count res) 2))
+        ;; page size is approximate at query level, but should still paginate.
+        (is (> (count res) 1))
         (is (every? #(>= (count %) i) (butlast res)))
         (bind all (apply concat res))
         (is (apply >= (mapv :start-time-millis all)))
@@ -198,3 +201,313 @@
                                            set))))
             )))))
     )))
+
+(deftest invokes-page-query-filters-test
+  (with-open [ipc (rtest/create-ipc)]
+    (letlocals
+     (bind module
+       (aor/agentmodule
+        [topology]
+        (-> topology
+            (aor/new-agent "foo")
+            (aor/node
+             "start"
+             nil
+             (fn [agent-node {:keys [route sleep-ms]}]
+               (when sleep-ms
+                 (Thread/sleep ^long sleep-ms))
+               (cond
+                 (= route :fail)
+                 (throw (ex-info "boom" {:route route}))
+
+                 (= route :slow)
+                 (aor/result! agent-node {:ok true :route route})
+
+                 :else
+                 (aor/result! agent-node {:ok true :route :fast})))))))
+     (launch-module-without-eval-agent! ipc module {:tasks 2 :threads 1})
+     (bind module-name (get-module-name module))
+     (bind agent-manager (aor/agent-manager ipc module-name))
+     (bind foo (aor/agent-client agent-manager "foo"))
+     (bind global-actions-depot
+       (:global-actions-depot (aor-types/underlying-objects agent-manager)))
+     (bind q (:invokes-page-query (aor-types/underlying-objects foo)))
+
+     ;; Build a mixed population across success/failure and latency buckets.
+     (bind experiment-source
+       (aor-types/->valid-ExperimentSourceImpl
+        (java.util.UUID/randomUUID)
+        (java.util.UUID/randomUUID)))
+     (bind runs
+       [{:name :fast-1 :args {:route :fast :sleep-ms 1}}
+        {:name :fast-2 :args {:route :fast :sleep-ms 1}}
+        {:name :slow-exp :args {:route :slow :sleep-ms 90} :source experiment-source}
+        {:name :slow-2 :args {:route :slow :sleep-ms 100}}
+        {:name :fail-1 :args {:route :fail :sleep-ms 20}}
+        {:name :fail-2 :args {:route :fail :sleep-ms 30}}])
+
+     (bind created-runs
+       (vec
+        (for [{:keys [name args source]} runs]
+          (let [inv (if source
+                      (binding [aor-types/OPERATION-SOURCE source]
+                        (aor/agent-initiate foo args))
+                      (aor/agent-initiate foo args))]
+            {:name name :invoke inv}))))
+
+     (doseq [{:keys [invoke]} created-runs]
+       (let [inv invoke]
+         (try
+           (aor/agent-result foo inv)
+           (catch Throwable _))))
+
+     (bind slow-res
+       (foreign-invoke-query q
+                             10
+                             100
+                             nil
+                             {:node-name "start"
+                              :latency-ms {:min 80}
+                              :has-error? false}))
+     (bind slow-rows (:agent-invokes slow-res))
+     (is (seq slow-rows))
+     (is (every? #(= :success (:status %)) slow-rows))
+     (is (every? (fn [m]
+                   (let [lat (- (:finish-time-millis m) (:start-time-millis m))]
+                     (>= lat 80)))
+                 slow-rows))
+
+     (bind err-res
+       (foreign-invoke-query q
+                             10
+                             100
+                             nil
+                             {:has-error? true}))
+     (bind err-rows (:agent-invokes err-res))
+     (is (seq err-rows))
+     (is (every? #(= :failure (:status %)) err-rows))
+
+     ;; Add human feedback scores for metric-filter testing.
+     (bind fast-target
+       (aor-types/->valid-FeedbackTarget
+        "foo"
+        (:invoke (first (filter #(= :fast-1 (:name %)) created-runs)))
+        nil))
+     (bind slow-exp-target
+       (aor-types/->valid-FeedbackTarget
+        "foo"
+        (:invoke (first (filter #(= :slow-exp (:name %)) created-runs)))
+        nil))
+     (evals/add-human-feedback! global-actions-depot fast-target "reviewer-1" {"quality" 2} "bad")
+     (evals/add-human-feedback! global-actions-depot slow-exp-target "reviewer-2" {"quality" 8} "good")
+
+     (bind feedback-res
+       (foreign-invoke-query q
+                             10
+                             100
+                             nil
+                             {:feedback-metric {:metric-name "quality"
+                                                :comparator :<=
+                                                :value 3
+                                                :source :human}}))
+     (bind feedback-rows (:agent-invokes feedback-res))
+     (is (= 1 (count feedback-rows)))
+     (is (every? #(contains? % :feedback-metric-value) feedback-rows))
+     (is (every? #(number? (:feedback-metric-value %)) feedback-rows))
+
+     (bind source-res
+       (foreign-invoke-query q
+                             10
+                             100
+                             nil
+                             {:source "EXPERIMENT"}))
+     (bind source-rows (:agent-invokes source-res))
+     (is (= 1 (count source-rows)))
+
+     (bind source-not-res
+       (foreign-invoke-query q
+                             20
+                             100
+                             nil
+                             {:source "EXPERIMENT"
+                              :source-not? true}))
+     (bind source-not-rows (:agent-invokes source-not-res))
+     (is (= 5 (count source-not-rows)))
+
+     (bind source-manual-res
+       (foreign-invoke-query q
+                             20
+                             100
+                             nil
+                             {:source "MANUAL"}))
+     (bind source-manual-rows (:agent-invokes source-manual-res))
+     (is (= 5 (count source-manual-rows)))
+
+     (bind empty-res
+       (foreign-invoke-query q
+                             10
+                             100
+                             nil
+                             {:has-error? true
+                              :source "EXPERIMENT"}))
+     (is (empty? (:agent-invokes empty-res)))
+
+     )))
+
+(deftest invokes-page-query-filter-pagination-test
+  (with-open [ipc (rtest/create-ipc)]
+    (letlocals
+     (bind module
+       (aor/agentmodule
+        [topology]
+        (-> topology
+            (aor/new-agent "foo")
+            (aor/node
+             "start"
+             nil
+             (fn [agent-node {:keys [route sleep-ms]}]
+               (when sleep-ms
+                 (Thread/sleep ^long sleep-ms))
+               (if (= route :fail)
+                 (throw (ex-info "boom" {:route route}))
+                 (aor/result! agent-node {:ok true :route :fast})))))))
+     (launch-module-without-eval-agent! ipc module {:tasks 2 :threads 1})
+     (bind module-name (get-module-name module))
+     (bind agent-manager (aor/agent-manager ipc module-name))
+     (bind foo (aor/agent-client agent-manager "foo"))
+     (bind q (:invokes-page-query (aor-types/underlying-objects foo)))
+
+     ;; Sparse matches force scan-window growth; pagination should continue
+     ;; from each task's scan cursor without restarts or duplicates.
+     (bind runs
+       (vec
+        (for [i (range 40)]
+          (let [fail? (zero? (mod i 4))]
+            {:fail? fail?
+             :args {:route (if fail? :fail :fast)
+                    :sleep-ms 1}}))))
+
+     (bind created-runs
+       (vec
+        (for [{:keys [fail? args]} runs]
+          {:fail? fail?
+           :invoke (aor/agent-initiate foo args)})))
+
+     (doseq [{:keys [invoke]} created-runs]
+       (try
+         (aor/agent-result foo invoke)
+         (catch Throwable _)))
+
+     (bind expected-failed-invokes
+       (set
+        (for [{:keys [fail? invoke]} created-runs
+              :when fail?]
+          [(:task-id invoke) (:agent-invoke-id invoke)])))
+
+     (bind pages
+       (loop [ret []
+              params nil
+              i 0]
+         (when (> i 200)
+           (throw (ex-info "filtered pagination did not terminate"
+                           {:iterations i})))
+         (let [{:keys [agent-invokes pagination-params]}
+               (foreign-invoke-query q
+                                    2
+                                    100
+                                    params
+                                    {:has-error? true})
+               ret (conj ret agent-invokes)]
+           (if (every? nil? (vals pagination-params))
+             ret
+             (recur ret pagination-params (inc i))))))
+
+     (bind all (apply concat pages))
+     (bind all-ids (mapv (fn [m] [(:task-id m) (:agent-id m)]) all))
+
+     (is (> (count pages) 1))
+     (is (= (count all-ids) (count (set all-ids))))
+     (is (= expected-failed-invokes (set all-ids)))
+     (is (every? #(= :failure (:status %)) all))
+     )))
+
+(deftest invokes-page-query-scan-page-size-matrix-test
+  (with-open [ipc (rtest/create-ipc)]
+    (letlocals
+     (bind module
+       (aor/agentmodule
+        [topology]
+        (-> topology
+            (aor/new-agent "foo")
+            (aor/node
+             "start"
+             nil
+             (fn [agent-node {:keys [route sleep-ms]}]
+               (when sleep-ms
+                 (Thread/sleep ^long sleep-ms))
+               (if (= route :fail)
+                 (throw (ex-info "boom" {:route route}))
+                 (aor/result! agent-node {:ok true :route :fast})))))))
+     (launch-module-without-eval-agent! ipc module {:tasks 2 :threads 1})
+     (bind module-name (get-module-name module))
+     (bind agent-manager (aor/agent-manager ipc module-name))
+     (bind foo (aor/agent-client agent-manager "foo"))
+     (bind q (:invokes-page-query (aor-types/underlying-objects foo)))
+
+     ;; Sparse source matches force each request to read through multiple scan windows.
+     (bind experiment-source
+       (aor-types/->valid-ExperimentSourceImpl
+        (java.util.UUID/randomUUID)
+        (java.util.UUID/randomUUID)))
+     (bind runs
+       (vec
+        (for [i (range 120)]
+          (let [experiment? (zero? (mod i 11))]
+            {:experiment? experiment?
+             :args {:route (if experiment? :experiment :manual)
+                    :sleep-ms 1}}))))
+
+     (bind created-runs
+       (vec
+        (for [{:keys [experiment? args]} runs]
+          {:experiment? experiment?
+           :invoke (if experiment?
+                     (binding [aor-types/OPERATION-SOURCE experiment-source]
+                       (aor/agent-initiate foo args))
+                     (aor/agent-initiate foo args))})))
+
+     (doseq [{:keys [invoke]} created-runs]
+       (aor/agent-result foo invoke))
+
+     (bind expected-experiment-invokes
+       (set
+        (for [{:keys [experiment? invoke]} created-runs
+              :when experiment?]
+          [(:task-id invoke) (:agent-invoke-id invoke)])))
+
+     (doseq [scan-page-size [2 3 5 8]]
+       (let [pages
+             (loop [ret []
+                    params nil
+                    i 0]
+               (when (> i 250)
+                 (throw (ex-info "scan-size matrix pagination did not terminate"
+                                 {:scan-page-size scan-page-size
+                                  :iterations i})))
+               (let [{:keys [agent-invokes pagination-params]}
+                     (foreign-invoke-query q
+                                          4
+                                          scan-page-size
+                                          params
+                                          {:source "EXPERIMENT"})
+                     ret (conj ret agent-invokes)]
+                 (if (every? nil? (vals pagination-params))
+                   ret
+                   (recur ret pagination-params (inc i)))))
+             all (apply concat pages)
+             all-ids (mapv (fn [m] [(:task-id m) (:agent-id m)]) all)]
+         (is (> (count pages) 2))
+         (is (= (count all-ids) (count (set all-ids))))
+         (is (= expected-experiment-invokes (set all-ids)))
+         (is (every? #(= :success (:status %)) all))))
+     )))

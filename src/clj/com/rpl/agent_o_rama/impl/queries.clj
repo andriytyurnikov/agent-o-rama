@@ -342,25 +342,230 @@
   [i]
   (if (= i 1) 3 (inc i)))
 
-(defn relevant-invoke-submap
+(defn invoke-status
   [m]
-  (let [ret (select-keys m
-                         [:start-time-millis :finish-time-millis
-                          :invoke-args :graph-version])]
-    (assoc ret
-     :human-request?
-     (-> m
-         :human-requests
-         empty?
-         not)
+  (let [r (:result m)]
+    (cond (nil? r) :pending
+          (:failure? r) :failure
+          :else :success)))
 
-     :status
-     (let [r (:result m)]
-       (cond (nil? r) :pending
-             (:failure? r) :failure
-             :else :success)
+(defn invoke-latency-millis
+  [m]
+  (let [start (:start-time-millis m)
+        finish (:finish-time-millis m)]
+    (when (and (some? start) (some? finish))
+      (- finish start))))
 
-     ))))
+(defn invoke-source-string
+  [m]
+  (when-let [source (:source m)]
+    (aor-types/source-string source)))
+
+(def invoke-source-filter-types
+  #{"API" "MANUAL" "EXPERIMENT"})
+
+(defn invoke-source-filter-type
+  [m]
+  (let [source-str (invoke-source-string m)]
+    (cond
+      (= "api" source-str)
+      "API"
+
+      (= "experiment" source-str)
+      "EXPERIMENT"
+
+      :else
+      "MANUAL")))
+
+(defn valid-invoke-source-filter-type
+  [source-filter]
+  (when (string? source-filter)
+    (let [source-filter-upper (str/upper-case source-filter)]
+      (when (contains? invoke-source-filter-types source-filter-upper)
+        source-filter-upper))))
+
+(defn invoke-source-matches?
+  [m source-filter source-not?]
+  (if (nil? source-filter)
+    true
+    (if-let [source-filter-type (valid-invoke-source-filter-type source-filter)]
+      (let [matches? (= source-filter-type
+                        (invoke-source-filter-type m))]
+        (if source-not?
+          (not matches?)
+          matches?))
+      false)))
+
+(defn feedback-source-matches?
+  [feedback feedback-source]
+  (cond
+    (or (nil? feedback-source) (= feedback-source :any))
+    true
+
+    (= feedback-source :human)
+    (aor-types/HumanSourceImpl? (:source feedback))
+
+    (= feedback-source :non-human)
+    (not (aor-types/HumanSourceImpl? (:source feedback)))
+
+    (keyword? feedback-source)
+    (= (name feedback-source) (aor-types/source-string (:source feedback)))
+
+    (string? feedback-source)
+    (= feedback-source (aor-types/source-string (:source feedback)))
+
+    :else
+    false))
+
+(def ordered-feedback-comparators
+  #{:< :<= :> :>=})
+
+(defn parse-number-like-value
+  [v]
+  (try
+    (Long/parseLong v)
+    (catch Throwable _
+      v)))
+
+(defn normalized-feedback-compare-values
+  [feedback-metric score-value]
+  (let [{:keys [comparator value]} feedback-metric
+        normalized-score (parse-number-like-value score-value)
+        normalized-value (parse-number-like-value value)]
+    (if (contains? ordered-feedback-comparators comparator)
+      (when (and (number? normalized-score) (number? normalized-value))
+        [normalized-score normalized-value])
+      [normalized-score normalized-value])))
+
+(defn feedback-entry-matches?
+  [feedback {:keys [metric-name comparator value source]}]
+  (let [score-value (get (:scores feedback) metric-name ::missing)]
+    (and (feedback-source-matches? feedback source)
+         (not= ::missing score-value)
+         (if-let [[compare-score compare-value]
+                  (normalized-feedback-compare-values
+                   {:comparator comparator :value value}
+                   score-value)]
+           (try
+             (aor-types/comparator-spec-matches?
+              {:comparator comparator
+               :value      compare-value}
+              compare-score)
+             (catch Throwable _
+               false))
+           false))))
+
+(defn feedback-entry-matched-score
+  [feedback feedback-metric]
+  (let [{:keys [metric-name]} feedback-metric
+        score-value (get (:scores feedback) metric-name ::missing)]
+    (when (and (feedback-source-matches? feedback (:source feedback-metric))
+               (not= ::missing score-value)
+               (if-let [[compare-score compare-value]
+                        (normalized-feedback-compare-values feedback-metric
+                                                           score-value)]
+                 (try
+                   (aor-types/comparator-spec-matches?
+                    {:comparator (:comparator feedback-metric)
+                     :value      compare-value}
+                    compare-score)
+                   (catch Throwable _
+                     false))
+                 false))
+      (parse-number-like-value score-value))))
+
+(defn invoke-feedback-metric-value
+  [m feedback-metric]
+  (when (some? feedback-metric)
+    (let [results (get-in m [:feedback :results])]
+      (when (seq results)
+        (some #(feedback-entry-matched-score % feedback-metric)
+              results)))))
+
+(defn invoke-feedback-matches?
+  [m feedback-metric]
+  (if (nil? feedback-metric)
+    true
+    (some? (invoke-feedback-metric-value m feedback-metric))))
+
+(defn invoke-matches-filters?
+  [m filters]
+  (let [{:keys [node-name has-error? latency-ms source source-not? feedback-metric]} filters
+        status (invoke-status m)
+        latency (invoke-latency-millis m)
+        {:keys [min max]} latency-ms
+        node-stats (get-in m [:stats :basic-stats :node-stats])]
+    (and
+     (if (some? node-name)
+       (contains? node-stats node-name)
+       true)
+     (if (some? has-error?)
+       (= has-error? (= status :failure))
+       true)
+     (if (some? min)
+       (and (some? latency) (>= latency min))
+       true)
+     (if (some? max)
+       (and (some? latency) (<= latency max))
+       true)
+     (invoke-source-matches? m source source-not?)
+     (invoke-feedback-matches? m feedback-metric))))
+
+(defn relevant-invoke-submap
+  ([m]
+   (relevant-invoke-submap m nil))
+  ([m filters]
+   (when (invoke-matches-filters? m filters)
+     (let [ret (select-keys m
+                            [:start-time-millis :finish-time-millis
+                             :invoke-args :graph-version])
+           feedback-metric (:feedback-metric filters)
+           feedback-metric-value (invoke-feedback-metric-value m feedback-metric)]
+       (cond-> (assoc ret
+                 :human-request?
+                 (-> m
+                     :human-requests
+                     empty?
+                     not)
+                 :status
+                 (invoke-status m))
+         (some? feedback-metric)
+         (assoc :feedback-metric-value feedback-metric-value))))))
+
+(defn filter-invokes-task-page
+  [m filters]
+  (into (sorted-map)
+        (keep (fn [[id info]]
+                (when-let [submap (relevant-invoke-submap info filters)]
+                  [id submap])))
+        m))
+
+(defn should-stop-invokes-scan?
+  [raw-page aggregated-filtered-page scan-amt result-page-size]
+  (or (< (count raw-page) scan-amt)
+      (>= (count aggregated-filtered-page) result-page-size)))
+
+(defn merge-invokes-pagination-params
+  [scan-pagination-params merge-pagination-params]
+  (let [all-task-ids (into #{}
+                           (concat (keys scan-pagination-params)
+                                   (keys merge-pagination-params)))]
+    (reduce (fn [ret task-id]
+              (let [scan-cursor (get scan-pagination-params task-id)
+                    merge-cursor (get merge-pagination-params task-id)]
+                (assoc ret
+                       task-id
+                       (cond
+                         (some? merge-cursor)
+                         (h/uuid-inc merge-cursor)
+
+                         (some? scan-cursor)
+                         scan-cursor
+
+                         :else
+                         nil))))
+            {}
+            all-task-ids)))
 
 (defbasicblocksegmacro get-distributed-page*
   [page-size pagination-params pstate-name res info-transformer page-result-fn max-key-fn initial-path]
@@ -431,13 +636,70 @@
 
 (defn declare-get-invokes-page-topology
   [topologies]
-  (declare-get-agent-distributed-page-topology
-   topologies
-   (agent-get-invokes-page-query-name)
-   po/agent-root-task-global-name
-   relevant-invoke-submap
-   to-invokes-page-result
-   h/max-uuid))
+  (<<query-topology topologies
+    (agent-get-invokes-page-query-name)
+    [*agent-name *page-size *scan-page-size *pagination-params *filters :> *res]
+    (po/agent-root-task-global-name *agent-name :> *pstate-name)
+    (|all)
+    (ops/current-task-id :> *task-id)
+    (identity *page-size :> *result-page-size)
+    (get *pagination-params *task-id ::missing :> *cursor)
+    (<<cond
+     (case> (= *cursor ::missing))
+      (identity (h/max-uuid) :> *end-id)
+
+     (case> (nil? *cursor))
+      (identity nil :> *end-id)
+
+     (default>)
+      (identity *cursor :> *end-id))
+    (<<if (nil? *end-id)
+      (sorted-map :> *task-page)
+      (identity nil :> *resume-end-id)
+     (else>)
+      (loop<- [*scan-end-id *end-id
+               *task-page (sorted-map)
+               :> *task-page *resume-end-id]
+        (yield-if-overtime)
+        (local-select>
+         [(sorted-map-range-to *scan-end-id
+                               {:inclusive? false
+                                :max-amt    *scan-page-size})]
+         (this-module-pobject-task-global *pstate-name)
+         :> *raw-page)
+        (filter-invokes-task-page *raw-page *filters :> *filtered-page)
+        (into *task-page *filtered-page :> *next-task-page)
+        (<<if (empty? *raw-page)
+          (identity nil :> *next-scan-end-id)
+         (else>)
+          (h/first-key *raw-page :> *next-scan-end-id))
+        (should-stop-invokes-scan? *raw-page
+                                   *next-task-page
+                                   *scan-page-size
+                                   *result-page-size
+                                   :> *stop?)
+        (<<if *stop?
+          (<<if (< (count *raw-page) *scan-page-size)
+            (identity nil :> *resume-end-id)
+           (else>)
+            (identity *next-scan-end-id :> *resume-end-id))
+          (:> *next-task-page *resume-end-id)
+         (else>)
+          (continue> *next-scan-end-id *next-task-page))))
+    (|origin)
+    (aggs/+map-agg *task-id *task-page :> *pages-map)
+    (aggs/+map-agg *task-id *resume-end-id :> *pagination-params)
+    (to-invokes-page-result *pages-map
+                            *page-size
+                            :> *tmp-res)
+    (get *tmp-res :agent-invokes :> *agent-invokes)
+    (get *tmp-res :pagination-params :> *merge-pagination-params)
+    (merge-invokes-pagination-params *pagination-params
+                                     *merge-pagination-params
+                                     :> *combined-pagination-params)
+    (hash-map :agent-invokes *agent-invokes
+              :pagination-params *combined-pagination-params
+              :> *res)))
 
 (defn declare-agent-get-names-query-topology
   [topologies agent-names]
