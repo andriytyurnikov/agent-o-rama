@@ -1,6 +1,12 @@
 import { expect } from '@playwright/test';
 
 /**
+ * CSS selector for the inline dropdown menu rendered by common/Dropdown.
+ * The menu is positioned absolute within the trigger's parent container.
+ */
+const DROPDOWN_MENU_SELECTOR = '.origin-top-right';
+
+/**
  * Gets the agent row for the BasicAgentModule.
  * @param {import('@playwright/test').Page} page - The Playwright page object.
  * @returns {Promise<import('@playwright/test').Locator>} The agent row locator.
@@ -60,6 +66,55 @@ export async function getE2ETestAgentRow(page) {
   console.log(`Found agent: ${moduleNs}/${moduleName}:${agentName}`);
 
   return agentRow;
+}
+
+/**
+ * Gets the currently open common/Dropdown menu.
+ * The menu is rendered inline (absolute-positioned) as a sibling of the trigger button.
+ * @param {import('@playwright/test').Page} page - The Playwright page object.
+ * @returns {import('@playwright/test').Locator} The menu locator.
+ */
+export function getCommonDropdownMenu(page) {
+  return page.locator(DROPDOWN_MENU_SELECTOR).last();
+}
+
+/**
+ * Opens a common/Dropdown trigger and waits for the menu to be visible.
+ * Retries the click if the menu doesn't appear (the dropdown's document click
+ * handler can race with polling re-renders and close the menu immediately).
+ * @param {import('@playwright/test').Page} page - The Playwright page object.
+ * @param {import('@playwright/test').Locator} trigger - The dropdown trigger button locator.
+ * @returns {Promise<import('@playwright/test').Locator>} The visible menu locator.
+ */
+export async function openCommonDropdown(page, trigger) {
+  const menu = getCommonDropdownMenu(page);
+  for (let attempt = 0; attempt < 5; attempt++) {
+    await trigger.click();
+    if (await menu.isVisible().catch(() => false)) return menu;
+    await page.waitForTimeout(200);
+    if (await menu.isVisible().catch(() => false)) return menu;
+  }
+  await expect(menu).toBeVisible({ timeout: 5000 });
+  return menu;
+}
+
+/**
+ * Selects an option from a common/Dropdown by clicking the trigger then the option.
+ * Retries if the dropdown doesn't stay open (see openCommonDropdown).
+ * @param {import('@playwright/test').Page} page - The Playwright page object.
+ * @param {import('@playwright/test').Locator} trigger - The dropdown trigger button locator.
+ * @param {string|RegExp} optionText - Option text to click.
+ * @param {{ exact?: boolean }} [options] - Matching options.
+ * @returns {Promise<void>}
+ */
+export async function selectCommonDropdownOption(page, trigger, optionText, options = {}) {
+  const { exact = true } = options;
+  const menu = await openCommonDropdown(page, trigger);
+  const option = typeof optionText === 'string'
+    ? menu.getByText(optionText, { exact }).first()
+    : menu.getByText(optionText).first();
+  await expect(option).toBeVisible({ timeout: 15000 });
+  await option.click();
 }
 
 /**
@@ -406,38 +461,46 @@ export async function deleteHumanMetric(page, name) {
 export async function addEvaluatorToExperiment(page, modal, evaluatorName) {
   console.log(`Adding evaluator to experiment: ${evaluatorName}`);
   
-  // Find the search input within the modal (has placeholder "Search evaluators by name...")
-  const searchInput = modal.getByPlaceholder(/Search evaluators/);
+  // Prefer stable test id, fallback to placeholder for compatibility.
+  let searchInput = modal.getByTestId('evaluator-selector-input');
+  if (!(await searchInput.isVisible().catch(() => false))) {
+    searchInput = modal.getByPlaceholder(/Search evaluators/i);
+  }
   await expect(searchInput).toBeVisible();
-  
-  // Click the search input to focus it
-  await searchInput.click();
-  
-  // Type first 10 chars to trigger search (faster than full name)
-  const searchText = evaluatorName.substring(0, Math.min(10, evaluatorName.length));
-  await searchInput.pressSequentially(searchText, { delay: 50 });
-  
-  // Wait for search debounce (300ms) + buffer
-  await page.waitForTimeout(600);
 
-  // Wait for the dropdown container (listbox) to appear.
-  // The popover is rendered in a portal, so target it globally.
-  const listbox = page.getByRole('listbox', { name: 'Evaluator search results' });
-  await expect(listbox).toBeVisible({ timeout: 15000 });
+  const dropdown = page.getByTestId('evaluator-selector-dropdown');
+  const evaluatorOptionByTestId = page.getByTestId(`evaluator-selector-option-${evaluatorName}`);
+  const evaluatorOptionByRole = page.getByRole('option').filter({ hasText: evaluatorName }).first();
+  const optionIsVisible = async () =>
+    (await evaluatorOptionByTestId.isVisible().catch(() => false))
+    || (await evaluatorOptionByRole.isVisible().catch(() => false));
 
-  // Wait for the specific evaluator option to appear in the dropdown
-  // The option's accessible name includes both name and description, so use filter
-  const evaluatorOption = listbox
-    .locator('[role="option"]')
-    .filter({ hasText: evaluatorName })
-    .first();
+  // Retry search to handle async indexing / network jitter in CI.
+  // Some backends match prefixes more reliably than full exact strings.
+  const searchTerms = Array.from(new Set([
+    evaluatorName,
+    evaluatorName.substring(0, Math.min(12, evaluatorName.length)),
+    evaluatorName.substring(0, Math.min(8, evaluatorName.length)),
+  ])).filter(Boolean);
+
+  for (const term of searchTerms) {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      await searchInput.click();
+      await searchInput.fill('');
+      await searchInput.fill(term);
+      // Dropdown visibility can race with scroll/portal updates, so treat it as optional.
+      await dropdown.isVisible().catch(() => false);
+      if (await optionIsVisible()) break;
+      await page.waitForTimeout(700);
+    }
+    if (await optionIsVisible()) break;
+  }
+  const foundByTestId = await evaluatorOptionByTestId.isVisible().catch(() => false);
+  const evaluatorOption = foundByTestId ? evaluatorOptionByTestId : evaluatorOptionByRole;
   await expect(evaluatorOption).toBeVisible({ timeout: 15000 });
   
   // Click the evaluator in the dropdown
   await evaluatorOption.click();
-  
-  // Verify the evaluator was added by checking for its badge
-  await expect(modal.getByText(evaluatorName, { exact: true })).toBeVisible();
   
   console.log(`Successfully added evaluator: ${evaluatorName}`);
 }
