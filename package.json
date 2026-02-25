@@ -4,7 +4,6 @@
   "private": true,
   "devDependencies": {
     "@playwright/test": "^1.55.0",
-    "@tailwindcss/cli": "^4",
     "jsdom": "^25.0.1",
     "shadow-cljs": "3.0.5"
   },
