@@ -35,12 +35,20 @@
         (str/includes? (str content-type) "text/html"))
     "no-cache"
 
-    ;; JS/CSS - cache for 1 year (use content hashing for cache busting)
+    ;; Content-hashed assets (main.A1B2C3D4.js, main.DkF9xQ2p.css) - cache forever
+    (and (or (str/ends-with? uri ".js")
+             (str/ends-with? uri ".css")
+             (str/includes? (str content-type) "javascript")
+             (str/includes? (str content-type) "text/css"))
+         (re-find #"\.[0-9a-zA-Z]{8,}\." uri))
+    "public, max-age=31536000, immutable"
+
+    ;; Unhashed JS/CSS (dev mode) - always revalidate
     (or (str/ends-with? uri ".js")
         (str/ends-with? uri ".css")
         (str/includes? (str content-type) "javascript")
         (str/includes? (str content-type) "text/css"))
-    "public, max-age=31536000, immutable"
+    "no-cache"
 
     ;; Images and fonts - cache for 1 year
     (or (str/ends-with? uri ".png")
@@ -81,12 +89,23 @@
         (throw (ex-info "Could not read :output-name from manifest.edn" {:manifest manifest})))
       output-name)))
 
+(defn- get-css-filename
+  "Reads the Vite manifest (JSON) to get the CSS filename.
+   Falls back to \"main.css\" if manifest is missing or unreadable."
+  []
+  (if-let [manifest-resource (io/resource "public/css-manifest.json")]
+    (let [content (slurp manifest-resource)
+          match (re-find #"\"file\"\s*:\s*\"([^\"]+)\"" content)]
+      (if match (second match) "main.css"))
+    "main.css"))
+
 (defn- render-index-html
-  "Renders index.html with the correct hashed JS filename."
+  "Renders index.html with the correct hashed JS and CSS filenames."
   []
   (-> (io/resource "index.html")
       slurp
-      (str/replace "{{MAIN_JS}}" (get-js-filename))))
+      (str/replace "{{MAIN_JS}}" (get-js-filename))
+      (str/replace "{{MAIN_CSS}}" (get-css-filename))))
 
 (defn spa-index-handler
   "Serves the SPA index.html and ensures session cookie is set.

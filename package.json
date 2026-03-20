@@ -4,8 +4,15 @@
   "private": true,
   "devDependencies": {
     "@playwright/test": "^1.55.0",
+    "@tailwindcss/vite": "^4.2.2",
+    "concurrently": "^9.2.1",
     "jsdom": "^25.0.1",
-    "shadow-cljs": "3.0.5"
+    "shadow-cljs": "3.0.5",
+    "vite": "^8.0.1"
+  },
+  "scripts": {
+    "dev": "concurrently -n css,cljs -c blue,green \"vite build --watch\" \"npx shadow-cljs watch :dev\"",
+    "build": "vite build && npx shadow-cljs release :frontend"
   },
   "dependencies": {
     "@dagrejs/dagre": "^1.1.5",

@@ -30,10 +30,13 @@ scripts/code-format
 node_modules/
 public/
 
-# compiled frontend output
+# compiled frontend output (shadow-cljs)
 resource/public/main.js
 resource/public/main*.js
 resource/public/manifest.edn
+# compiled frontend output (vite)
+resource/public/main*.css
+resource/public/css-manifest.json
 
 # claude files
 CLAUDE.md

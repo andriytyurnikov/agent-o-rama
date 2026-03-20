@@ -4,6 +4,8 @@
   {:target           :browser
    :output-dir       "resource/public/"
    :modules          {:main {:init-fn com.rpl.agent-o-rama.ui/init}}
+   :build-hooks      [(vite-hook/build-css)]
+   :devtools         {:watch-dir "resource/public"}
    :compiler-options {:optimizations :none
                       :source-map    true}}
   :frontend
@@ -11,6 +13,7 @@
    :modules          {:main {:init-fn com.rpl.agent-o-rama.ui/init}}
    :output-dir       "resource/public/"
    :module-hash-names true  ; Content hashing for cache busting
+   :build-hooks      [(vite-hook/build-css)]
    :compiler-options {:optimizations :advanced
                       :infer-externs :auto}}
   :test
