@@ -11,11 +11,23 @@
 (def ^:private css-input  "src/cljs/com/rpl/agent_o_rama/ui/css/main.css")
 (def ^:private css-output "resource/public/main.css")
 
+(defn- tailwind-cmd
+  "Returns the path to the tailwindcss CLI binary.
+   Uses node_modules/.bin directly to avoid npx's interactive install prompts
+   when the package is missing."
+  []
+  (let [bin (io/file "node_modules/.bin/tailwindcss")]
+    (when-not (.exists bin)
+      (throw (ex-info (str "[tailwind] @tailwindcss/cli not found at " (.getPath bin)
+                           " — run 'npm install' first.")
+                      {:expected (.getAbsolutePath bin)})))
+    (.getAbsolutePath bin)))
+
 (defn- run-tailwind!
   "Run tailwindcss CLI with given args. Blocks until complete.
    Returns exit code."
   [& args]
-  (let [cmd (into ["npx" "@tailwindcss/cli" "-i" css-input "-o" css-output] args)
+  (let [cmd (into [(tailwind-cmd) "-i" css-input "-o" css-output] args)
         proc (-> (ProcessBuilder. ^java.util.List cmd)
                  (.redirectError ProcessBuilder$Redirect/INHERIT)
                  (.redirectOutput ProcessBuilder$Redirect/INHERIT)
@@ -40,8 +52,16 @@
           (println "[tailwind] Stopping previous CSS watch process...")
           (.destroyForcibly old-proc)
           (.waitFor old-proc)))
+      ;; Synchronous initial compile — ensures CSS exists before build completes,
+      ;; even for one-shot `compile :dev` where the watch process would be killed on JVM exit.
+      (println "[tailwind] Compiling CSS (initial) ...")
+      (let [exit-code (run-tailwind!)]
+        (when-not (zero? exit-code)
+          (throw (ex-info "[tailwind] initial CSS compilation failed"
+                          {:exit-code exit-code}))))
+      ;; Start watch process for live updates during `watch :dev`
       (println "[tailwind] Starting CSS watch process...")
-      (let [cmd ["npx" "@tailwindcss/cli" "-i" css-input "-o" css-output "--watch"]
+      (let [cmd [(tailwind-cmd) "-i" css-input "-o" css-output "--watch"]
             proc (-> (ProcessBuilder. ^java.util.List cmd)
                      (.redirectError ProcessBuilder$Redirect/INHERIT)
                      (.redirectOutput ProcessBuilder$Redirect/INHERIT)

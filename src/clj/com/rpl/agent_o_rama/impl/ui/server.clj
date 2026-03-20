@@ -91,27 +91,43 @@
 
 (defn- get-css-filename
   "Reads the CSS manifest to get the hashed CSS filename.
-   Falls back to \"main.css\" for dev mode (no manifest)."
+   Falls back to \"main.css\" for dev mode (no manifest).
+   Returns nil when no compiled CSS exists at all."
   []
   (if-let [manifest-resource (io/resource "public/css-manifest.edn")]
     (let [manifest (edn/read-string (slurp manifest-resource))
           output-name (:output-name (first manifest))]
       (or output-name "main.css"))
-    "main.css"))
+    (when (io/resource "public/main.css")
+      "main.css")))
+
+(def ^:private tailwind-cdn-fallback
+  "Fallback HTML for when no compiled CSS exists (e.g. REPL without prior build).
+   Uses the Tailwind browser runtime from CDN — slower but zero-setup."
+  (str "<script src=\"https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4\"></script>\n"
+       "\t<style>\n"
+       "\t  @keyframes spin {\n"
+       "\t    from { transform: rotate(0deg); }\n"
+       "\t    to { transform: rotate(360deg); }\n"
+       "\t  }\n"
+       "\t  .animate-spin { animation: spin 1s linear infinite; }\n"
+       "\t</style>"))
+
+(defn- tailwind-tag
+  "Returns the HTML to include Tailwind CSS.
+   Uses compiled CSS if available, otherwise falls back to CDN runtime."
+  []
+  (if-let [css-name (get-css-filename)]
+    (str "<link rel=\"stylesheet\" href=\"/" css-name "\">")
+    tailwind-cdn-fallback))
 
 (defn- render-index-html
-  "Renders index.html with the correct hashed JS and CSS filenames."
+  "Renders index.html with the correct hashed JS filename and Tailwind CSS."
   []
-  (let [js-name  (get-js-filename)
-        css-name (get-css-filename)]
-    (when (and (re-find #"\.[0-9a-fA-F]{8,}\." js-name)
-               (not (re-find #"\.[0-9a-fA-F]{8,}\." css-name)))
-      (throw (ex-info "JS is content-hashed but CSS is not - CSS build may have failed"
-                      {:js js-name :css css-name})))
-    (-> (io/resource "index.html")
-        slurp
-        (str/replace "{{MAIN_JS}}" js-name)
-        (str/replace "{{MAIN_CSS}}" css-name))))
+  (-> (io/resource "index.html")
+      slurp
+      (str/replace "{{MAIN_JS}}" (get-js-filename))
+      (str/replace "{{TAILWIND}}" (tailwind-tag))))
 
 (defn spa-index-handler
   "Serves the SPA index.html and ensures session cookie is set.
