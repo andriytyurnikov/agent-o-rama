@@ -1,5 +1,8 @@
-(ns com.rpl.agent-o-rama.ui.invocation-graph-view
+(ns com.rpl.agent-o-rama.ui.invocations.graph-view
   (:require
+   [re-frame.core :as rf]
+   [uix.re-frame :refer [use-subscribe]]
+   [com.rpl.agent-o-rama.ui.re-frame :as aor-rf]
    [clojure.string :as str]
    [clojure.pprint]
    [goog.i18n.DateTimeFormat :as dtf]
@@ -8,7 +11,6 @@
    [uix.core :as uix :refer [defui defhook $]]
 
    [com.rpl.specter :as s]
-   [com.rpl.agent-o-rama.ui.state :as state]
    [com.rpl.agent-o-rama.ui.common :as common]
    [com.rpl.agent-o-rama.ui.trace-analytics :as trace-analytics]
    [com.rpl.agent-o-rama.ui.feedback :as feedback]
@@ -17,6 +19,8 @@
    [com.rpl.agent-o-rama.ui.human-feedback.add-to-queue :as add-to-queue]
 
    [reitit.frontend.easy :as rfe]
+   [com.rpl.agent-o-rama.ui.rpc :as rpc]
+   [com.rpl.agent-o-rama.impl.ui.rpc.invocations :as rpc-invocations]
 
    ["react" :refer [useState useCallback useEffect]]
    ["@xyflow/react" :refer [ReactFlow Background Controls useNodesState useEdgesState Handle MiniMap]]
@@ -27,6 +31,15 @@
   ($ :div.p-6.space-y-4
      ($ :pre.text-xs.bg-gray-50.p-3.rounded.border.overflow-auto.max-h-80.font-mono
         content)))
+
+(defn graph-node-data
+  "Look up a node in `graph-data`; React Flow may stringify `:node-id` while keys stay UUIDs."
+  [graph-data node-id]
+  (when (and graph-data node-id)
+    (or (get graph-data node-id)
+        (get graph-data (str node-id))
+        (let [sid (str node-id)]
+          (some (fn [[k v]] (when (= (str k) sid) v)) graph-data)))))
 
 (defn format-ms [ms]
   (let [date (js/Date. ms)
@@ -111,21 +124,18 @@
 
 (defui expandable-item-component [{:keys [item color title truncate-length]
                                    :or {truncate-length 50}}]
-  (let [item-str (if (string? item) item (pr-str item))
-        pretty-str (common/pretty-format item)
-        is-long? (> (count item-str) truncate-length)
-        truncated-str (if is-long?
-                        (str (subs item-str 0 (- truncate-length 3)) "...")
-                        item-str)]
+  (let [{:keys [text truncated?]} (common/preview-line item truncate-length)]
     ($ :div {:className (str "text-" color "-500")}
        ($ :span {:className (str "break-words cursor-pointer hover:bg-" color "-100 px-1 py-0.5 rounded")
                  :onClick (fn [e]
                             (.stopPropagation e)
-                            (state/dispatch [:modal/show :expandable-content
-                                             {:title title
-                                              :component ($ common/ContentDetailModal {:title title :content pretty-str})}]))
+                            (rf/dispatch [:modal/show :expandable-content
+                                          {:title title
+                                           :component ($ common/ContentDetailModal
+                                                         {:title title
+                                                          :content (common/pretty-format item)})}]))
                  :title "Click to expand"}
-          truncated-str))))
+          text))))
 
 ;; Declare generic-data-viewer first to avoid circular dependency
 (declare generic-data-viewer)
@@ -269,7 +279,7 @@
                         :placeholder "Type your response..."
                         :value (or hitl-response "")
                         :disabled submitting?
-                        :onChange #(state/dispatch [:db/set-value
+                        :onChange #(rf/dispatch [:db/set-value
                                                     [:ui :hitl :responses hr-invoke-id]
                                                     (.. % -target -value)])})
           ($ :button {:className (common/cn "mt-2 px-3 py-2 rounded text-sm font-medium transition-colors"
@@ -278,18 +288,18 @@
                       :disabled (or submitting? (empty? (str/trim (or hitl-response ""))))
                       :onClick #(when (and (not submitting?)
                                            (not (empty? (str/trim (or hitl-response "")))))
-                                  (state/dispatch [:hitl/submit
+                                  (rf/dispatch [:hitl/submit
                                                    {:module-id module-id
                                                     :agent-name agent-name
                                                     :invoke-id invoke-id
                                                     :request hr
                                                     :response (str/trim hitl-response)}])
                                   ;; Clear the response after submission
-                                  (state/dispatch [:db/set-value [:ui :hitl :responses hr-invoke-id] ""]))}
+                                  (rf/dispatch [:db/set-value [:ui :hitl :responses hr-invoke-id] ""]))}
              (if submitting? "Submitting..." "Submit Response"))))))
 
 (defui node-info-panel [{:keys [node-id node-name graph-data module-id agent-name invoke-id]}]
-  (let [raw-node-data (get graph-data node-id)
+  (let [raw-node-data (graph-node-data graph-data node-id)
         node-task-id (:node-task-id raw-node-data)]
     ($ :div {:className "bg-indigo-50 p-3 rounded-md mt-4"}
        ($ :div {:className "flex justify-between items-center"}
@@ -321,9 +331,9 @@
                        :className "bg-white p-2 rounded border border-red-100 cursor-pointer hover:bg-red-50 transition-colors"
                        :onClick (fn [e]
                                   (.stopPropagation e)
-                                  (state/dispatch [:modal/show :exception-detail
+                                  (rf/dispatch [:modal/show :exception-detail
                                                    {:title (str "Exception " (inc idx))
-                                                    :component ($ ExceptionDetailModal {:title (str "Exception " (inc idx)) :content exc-text})}]))
+                                                    :component ($ ExceptionDetailModal {:title (str "Exception " (inc idx)) :content exc-str})}]))
                        :title "Click to view full exception"}
                  ($ :div {:className "text-xs font-mono text-red-800"}
                     first-line))))))))
@@ -411,45 +421,42 @@
                     ($ generic-data-viewer {:data info :color "indigo" :depth 0})))))))))
 
 (defui node-streaming-panel
-  "Displays real-time streaming output from a node.
-   Only shown when the node is actively streaming (in progress and not complete)."
-  [{:keys [module-id agent-name invoke-id node-name node-invoke-id is-streaming?]}]
-  (let [{:keys [text streaming? chunks reset-count]}
-        (streaming/use-node-stream module-id agent-name invoke-id node-name node-invoke-id)
-
-        ;; Ref for auto-scrolling
+  "Live runs: SSE (`stream-node!!sse`). Finished nodes: one-shot snapshot (no hung connection)."
+  [{:keys [module-id agent-name invoke-id node-name node-invoke-id replay-traced-node?]}]
+  (let [{:keys [text chunks reset-count complete?]}
+        (streaming/use-node-stream module-id agent-name invoke-id node-name node-invoke-id
+                                   (boolean replay-traced-node?))
+        waiting? (and (not complete?) (empty? chunks))
         scroll-ref (uix/use-ref nil)]
 
-    ;; Auto-scroll to bottom when text changes
     (uix/use-effect
      (fn []
        (when-let [el @scroll-ref]
-         (set! (.-scrollTop el) (.-scrollHeight el))))
+         (letfn [(scroll-end []
+                   (set! (.-scrollTop el) (.-scrollHeight el)))]
+           (js/requestAnimationFrame
+            (fn []
+              (js/requestAnimationFrame scroll-end))))))
      [text])
 
-    ;; Only show the panel if we have chunks to display
-    (when (seq chunks)
+    (if (and complete? (empty? chunks))
+      nil
       ($ :div {:className "bg-blue-50 p-3 rounded-md mt-4 border border-blue-200"}
          ($ :div {:className "flex items-center justify-between mb-2"}
-            ($ :div {:className "flex items-center gap-2"}
-               ($ :span {:className "text-sm font-medium text-blue-700"} "Streaming Output")
-               (when streaming?
-                 ($ :span {:className "flex items-center gap-1 text-xs text-blue-600"}
-                    ($ :span {:className "w-2 h-2 bg-blue-500 rounded-full animate-pulse"})
-                    "Live")))
+            ($ :span {:className "text-sm font-medium text-blue-700"} "Streaming Output")
             (when (pos? reset-count)
               ($ :span {:className "text-xs bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded"}
                  (str "↻ Reset " reset-count "x"))))
 
-         ;; Streaming content with auto-scroll
          ($ :div {:ref scroll-ref
                   :className "bg-white rounded border border-blue-100 p-3 max-h-64 overflow-y-auto"}
-            ($ :pre {:className "text-sm text-gray-800 whitespace-pre-wrap font-mono"}
-               text
-               (when streaming?
-                 ($ :span {:className "inline-block w-2 h-4 bg-blue-500 animate-pulse ml-0.5"}))))
+            (cond
+              waiting?
+              ($ :div {:className "text-sm text-gray-500"} "Connecting…")
 
-         ;; Chunk count
+              :else
+              ($ :pre {:className "text-sm text-gray-800 whitespace-pre-wrap font-mono"} text)))
+
          (when (seq chunks)
            ($ :div {:className "mt-2 text-xs text-blue-500"}
               (str (count chunks) " chunk" (when (not= (count chunks) 1) "s") " received")))))))
@@ -462,7 +469,7 @@
        ($ :div {:className "space-y-2"}
           (for [[idx emit] (map-indexed vector (js->clj emits :keywordize-keys true))]
             (let [emit-id (str (:invoke-id emit))
-                  is-loaded (contains? graph-data (:invoke-id emit))
+                  is-loaded (boolean (graph-node-data graph-data (:invoke-id emit)))
                   border-class (if is-loaded "border-indigo-200" "border-dashed border-indigo-300")
                   cursor-class "cursor-pointer"
                   bg-class (if is-loaded "bg-gray-50" "bg-white hover:bg-indigo-50")]
@@ -495,9 +502,7 @@
                                         node-id node-name result exceptions start-time finish-time duration input
                                         emits graph-data flow-nodes on-select-node on-paginate-node
                                         agent-invoke-id]}]
-  (let [;; Determine if node is in progress (started but not finished)
-        is-node-in-progress? (and start-time (not finish-time))
-        raw-node-data (get graph-data node-id)]
+  (let [raw-node-data (graph-node-data graph-data node-id)]
     ($ :<>
        ;; Add to Dataset button (first, at top)
        ($ :button.inline-flex.items-center.justify-center.px-3.py-2.bg-white.text-gray-700.text-sm.font-medium.rounded-md.border.border-gray-300.hover:bg-gray-50.transition-colors.cursor-pointer.w-full.mb-4
@@ -505,7 +510,7 @@
                       (.stopPropagation e)
                       (let [input-data (transform-node-input-for-dataset raw-node-data node-name)
                             output-data (transform-node-data-for-dataset raw-node-data node-name)]
-                        (state/dispatch [:modal/show-form :add-from-trace
+                        (rf/dispatch [:modal/show-form :add-from-trace
                                          {:module-id module-id
                                           :title (str "Add Node '" node-name "' to Dataset")
                                           :source-type :node
@@ -528,15 +533,13 @@
                            :agent-name agent-name
                            :invoke-id invoke-id})
 
-       ;; Streaming panel - shown for nodes that are in progress or have streaming data
-       ;; Uses node-id (specific node invocation UUID) to stream from the correct node instance
        (when (and agent-invoke-id node-id)
          ($ node-streaming-panel {:module-id module-id
                                   :agent-name agent-name
                                   :invoke-id agent-invoke-id
                                   :node-name node-name
-                                  :node-invoke-id node-id  ;; Specific node invocation ID
-                                  :is-streaming? is-node-in-progress?}))
+                                  :node-invoke-id node-id
+                                  :replay-traced-node? (some? finish-time)}))
 
        ($ node-exceptions-panel {:exceptions exceptions})
 
@@ -576,20 +579,20 @@
         hr (:human-request data)
 
         hr-invoke-id (when hr (:invoke-id hr))
-        hitl-response (state/use-sub (if hr-invoke-id
+        hitl-response (use-subscribe [::aor-rf/get-in (if hr-invoke-id
                                        [:ui :hitl :responses hr-invoke-id]
-                                       [:ui :hitl :responses :placeholder]))
-        submitting? (state/use-sub (if hr-invoke-id
+                                       [:ui :hitl :responses :placeholder])])
+        submitting? (use-subscribe [::aor-rf/get-in (if hr-invoke-id
                                      [:ui :hitl :submitting hr-invoke-id]
-                                     [:ui :hitl :submitting :placeholder]))
+                                     [:ui :hitl :submitting :placeholder])])
 
-        active-tab (state/use-sub [:ui :node-details :active-tab])]
+        active-tab (use-subscribe [::aor-rf/get-in [:ui :node-details :active-tab]])]
 
     ;; Default to :info tab
     (uix/use-effect
      (fn []
        (when (nil? active-tab)
-         (state/dispatch [:db/set-value [:ui :node-details :active-tab] :info])))
+         (rf/dispatch [:db/set-value [:ui :node-details :active-tab] :info])))
      [active-tab])
 
     (when selected-node
@@ -602,13 +605,13 @@
                                                  {"bg-white text-gray-900 shadow-sm" (= active-tab :info)
                                                   "text-gray-600 hover:text-gray-900" (not= active-tab :info)})
                            :data-id "node-info-tab"
-                           :onClick #(state/dispatch [:db/set-value [:ui :node-details :active-tab] :info])}
+                           :onClick #(rf/dispatch [:db/set-value [:ui :node-details :active-tab] :info])}
                   "Info")
                ($ :button {:className (common/cn "flex-1 py-2 px-3 text-sm font-medium rounded-md transition-colors"
                                                  {"bg-white text-gray-900 shadow-sm" (= active-tab :feedback)
                                                   "text-gray-600 hover:text-gray-900" (not= active-tab :feedback)})
                            :data-id "node-feedback-tab"
-                           :onClick #(state/dispatch [:db/set-value [:ui :node-details :active-tab] :feedback])}
+                           :onClick #(rf/dispatch [:db/set-value [:ui :node-details :active-tab] :feedback])}
                   "Feedback")))
 
          ;; Tab content
@@ -792,7 +795,7 @@
                     node-name (:node exc)
                     throwable-str (:throwable-str exc)
                     first-line (first (str/split-lines throwable-str))
-                    is-loaded? (contains? graph-data invoke-id)]
+                    is-loaded? (boolean (graph-node-data graph-data invoke-id))]
                 ($ :div {:key idx
                          :className "bg-white p-2 rounded border border-red-100"}
                    ;; Stack vertically instead of horizontal flex to prevent overflow
@@ -803,7 +806,7 @@
                          ($ :div {:className "text-xs font-mono text-red-600 mt-1 break-words cursor-pointer hover:bg-red-100 px-1 py-0.5 rounded transition-colors"
                                   :onClick (fn [e]
                                              (.stopPropagation e)
-                                             (state/dispatch [:modal/show :exception-detail
+                                             (rf/dispatch [:modal/show :exception-detail
                                                               {:title (str "Exception in " node-name)
                                                                :component ($ ExceptionDetailModal {:title (str "Exception in " node-name) :content throwable-str})}]))
                                   :title "Click to view full exception"}
@@ -841,36 +844,30 @@
                       (try
                         ;; Test if it's valid JSON
                         (js/JSON.parse edit-value)
-                        (com.rpl.agent-o-rama.ui.sente/request!
-                         [:invocations/set-metadata {:module-id module-id
-                                                     :agent-name agent-name
-                                                     :invoke-id invoke-id
-                                                     :key m-key
-                                                     :value-str edit-value}]
-                         10000
-                         (fn [reply]
-                           (set-is-saving! false)
-                           (if (:success reply)
-                             (do
-                               (set-editing! false)
-                               (on-change))
-                             (set-error! (or (:error reply) "Save failed.")))))
+                        (-> (rpc/call ::rpc-invocations/set-metadata!!
+                                      {:module-id module-id
+                                       :agent-name agent-name
+                                       :invoke-id invoke-id
+                                       :key m-key
+                                       :value-str edit-value})
+                            (.then (fn [_]
+                                     (set-is-saving! false)
+                                     (set-editing! false)
+                                     (on-change)))
+                            (.catch (fn [err]
+                                      (set-is-saving! false)
+                                      (set-error! (if (map? err) (or (:error err) "Save failed.") (str err))))))
                         (catch :default e
                           (set-is-saving! false)
                           (set-error! (str "Invalid JSON: " (.-message e))))))
 
         handle-delete (fn []
                         (when (js/confirm (str "Are you sure you want to remove the metadata key '" m-key "'?"))
-                          (com.rpl.agent-o-rama.ui.sente/request!
-                           [:invocations/remove-metadata {:module-id module-id
-                                                          :agent-name agent-name
-                                                          :invoke-id invoke-id
-                                                          :key m-key}]
-                           10000
-                           (fn [reply]
-                             (if (:success reply)
-                               (on-change)
-                               (js/alert (str "Failed to remove metadata: " (:error reply))))))))]
+                          (-> (rpc/call ::rpc-invocations/remove-metadata!!
+                                        {:module-id module-id :agent-name agent-name :invoke-id invoke-id :key m-key})
+                              (.then (fn [_] (on-change)))
+                              (.catch (fn [err]
+                                        (js/alert (str "Failed: " (if (map? err) (or (:error err) (str err)) (str err)))))))))]
 
     ($ :div.py-2.sm:grid.sm:grid-cols-3.sm:gap-4.sm:px-0
        ($ :dt.text-sm.font-medium.leading-6.text-gray-900.font-mono.truncate {:title m-key} m-key)
@@ -935,7 +932,7 @@
                                          :modal-title "Final Result Details"
                                          :truncate-length 200
                                          :on-expand (fn [{:keys [title content]}]
-                                                      (state/dispatch [:modal/show :content-detail
+                                                      (rf/dispatch [:modal/show :content-detail
                                                                        {:title title
                                                                         :component ($ common/ContentDetailModal {:title title :content content})}]))}))))))
 
@@ -949,7 +946,7 @@
           {:onClick (fn []
                       (let [input-data (:invoke-args summary-data)
                             output-data (:val (:result summary-data))]
-                        (state/dispatch [:modal/show-form :add-from-trace
+                        (rf/dispatch [:modal/show-form :add-from-trace
                                          {:module-id module-id
                                           :title "Add Agent Invocation to Dataset"
                                           :source-type :agent
@@ -980,7 +977,7 @@
                           :invoke-id invoke-id
                           :on-change
                           (fn []
-                            (state/dispatch [:invocation/start-graph-loading
+                            (rf/dispatch [:invocation/start-graph-loading
                                              {:invoke-id invoke-id
                                               :module-id module-id
                                               :agent-name agent-name}]))
@@ -997,7 +994,7 @@
        ;; Changed nodes list
        ($ :div {:data-id "changed-nodes-list"}
           (for [[node-id new-input] changed-nodes]
-            (let [node-data (get graph-data node-id)
+            (let [node-data (graph-node-data graph-data node-id)
                   node-name (:node node-data)
                   is-overridden (contains? affected-nodes node-id)
                   handle-select-node (fn [e]
@@ -1040,11 +1037,11 @@
        ;; Action buttons
        ($ :div {:className "pt-4 border-t border-gray-200 space-y-2"
                 :data-id "fork-action-buttons"}
-          ($ :button {:className "w-full font-medium py-2 px-4 rounded-md transition-colors bg-blue-600 hover:bg-blue-700 text-white"
+          ($ :button {:className "w-full font-medium py-2 px-4 rounded-md transition-colors bg-blue-600 hover:bg-blue-700 text-white cursor-pointer"
                       :data-id "execute-fork-button"
                       :onClick on-execute-fork}
              (str "Execute Fork (" (count changed-nodes) " changes)"))
-          ($ :button {:className "w-full bg-gray-300 hover:bg-gray-400 text-gray-700 font-medium py-2 px-4 rounded-md transition-colors"
+          ($ :button {:className "w-full bg-gray-300 hover:bg-gray-400 text-gray-700 font-medium py-2 px-4 rounded-md transition-colors cursor-pointer"
                       :data-id "clear-fork-button"
                       :onClick on-clear-fork}
              "Clear All Changes")))))
@@ -1052,7 +1049,7 @@
 (defui right-panel [{:keys [graph-data summary-data changed-nodes on-remove-node-change affected-nodes flow-nodes on-select-node on-execute-fork on-clear-fork forking-mode? on-toggle-forking-mode is-live
                             module-id agent-name task-id forks fork-of invoke-id sidebar-width on-sidebar-width-change]}]
   (let [;; Read tab from URL query params, default to :info
-        query-params (state/use-sub [:route :query-params])
+        query-params (use-subscribe [::aor-rf/get-in [:route :query-params]])
         tab-param (get query-params :tab)
         active-tab (case tab-param
                      "feedback" :feedback
@@ -1216,7 +1213,7 @@
                                              remaining (disj to-visit current)]
                                          (if (visited current)
                                            (recur remaining visited downstream)
-                                           (let [node-data (get graph-data current)
+                                           (let [node-data (graph-node-data graph-data current)
                                                  emitted-ids (set (map :invoke-id (:emits node-data)))
                                                  ;; Add emitted nodes to downstream (but not the starting node)
                                                  new-downstream (if (= current start-node-id)

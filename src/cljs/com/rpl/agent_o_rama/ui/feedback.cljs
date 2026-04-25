@@ -1,9 +1,10 @@
 (ns com.rpl.agent-o-rama.ui.feedback
   (:require
+   [re-frame.core :as rf]
    [uix.core :as uix :refer [$ defui]]
    [com.rpl.agent-o-rama.ui.common :as common]
-   [com.rpl.agent-o-rama.ui.state :as state]
-   [com.rpl.agent-o-rama.ui.sente :as sente]
+   [com.rpl.agent-o-rama.ui.rpc :as rpc]
+   [com.rpl.agent-o-rama.impl.ui.rpc.human-feedback :as rpc-hf]
    [com.rpl.agent-o-rama.ui.human-feedback.manual-feedback :as manual-feedback]
    [com.rpl.agent-o-rama.ui.human-feedback.add-to-queue :as add-to-queue]
    ["@heroicons/react/24/outline" :refer [ArrowTopRightOnSquareIcon PlusIcon PencilIcon TrashIcon QueueListIcon]]))
@@ -83,7 +84,7 @@
                                                                    :value (str v)
                                                                    :required false})
                                                                 scores)]
-                                  (state/dispatch [:modal/show-form :add-manual-feedback
+                                  (rf/dispatch [:modal/show-form :add-manual-feedback
                                                    {:module-id module-id
                                                     :agent-name agent-name
                                                     :invoke-id invoke-id
@@ -101,21 +102,14 @@
                      :title "Delete feedback"
                      :data-testid "delete-feedback-button"
                      :onClick #(when (js/confirm "Are you sure you want to delete this feedback?")
-                                 (sente/request!
-                                  [:human-feedback/delete-feedback
-                                   {:module-id module-id
-                                    :agent-name agent-name
-                                    :invoke-id invoke-id
-                                    :node-task-id node-task-id
-                                    :node-invoke-id node-invoke-id
-                                    :feedback-id (str feedback-id)}]
-                                  10000
-                                  (fn [reply]
-                                    (when (:success reply)
-                                      (state/dispatch [:invocation/start-graph-loading
-                                                       {:invoke-id invoke-id
-                                                        :module-id module-id
-                                                        :agent-name agent-name}])))))}
+                                 (-> (rpc/call ::rpc-hf/delete-feedback!!
+                                  {:module-id module-id :agent-name agent-name :invoke-id invoke-id
+                                   :node-task-id node-task-id :node-invoke-id node-invoke-id
+                                   :feedback-id feedback-id})
+                                 (.then (fn [_]
+                                          (rf/dispatch [:invocation/start-graph-loading
+                                                           {:invoke-id invoke-id :module-id module-id :agent-name agent-name}])))
+                                 (.catch (fn [err] (js/console.error "Delete feedback failed" (if (map? err) (:error err) (str err)))))))}
                     ($ TrashIcon {:className "h-4 w-4"})))))
          ($ :div {:className "space-y-1"}
             ;; Display scores
@@ -159,7 +153,7 @@
             ;; Add Feedback button (left half)
             ($ :button.inline-flex.items-center.justify-center.px-3.py-2.bg-white.text-gray-700.text-sm.font-medium.rounded-md.border.border-gray-300.hover:bg-gray-50.transition-colors.cursor-pointer.flex-1
                {:data-testid "add-feedback-button"
-                :onClick #(state/dispatch [:modal/show-form :add-manual-feedback
+                :onClick #(rf/dispatch [:modal/show-form :add-manual-feedback
                                            {:module-id module-id
                                             :agent-name agent-name
                                             :invoke-id invoke-id
@@ -211,5 +205,4 @@
          ($ :div {:className "text-gray-500 text-center py-8"
                   :data-id "feedback-empty-state"}
             "No feedback available")))))
-
 

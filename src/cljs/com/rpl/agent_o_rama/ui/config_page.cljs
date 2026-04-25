@@ -1,10 +1,14 @@
 (ns com.rpl.agent-o-rama.ui.config-page
   (:require
+   [re-frame.core :as rf]
+   [com.rpl.agent-o-rama.ui.re-frame :as aor-rf]
    [uix.core :as uix :refer [defui $]]
+   [uix.re-frame :refer [use-subscribe]]
    ["@heroicons/react/24/outline" :refer [CheckIcon ArrowPathIcon InformationCircleIcon]]
-   [com.rpl.agent-o-rama.ui.state :as state]
    [com.rpl.agent-o-rama.ui.common :as common]
-   [com.rpl.agent-o-rama.ui.queries :as queries]))
+   [com.rpl.agent-o-rama.ui.queries :as queries]
+   [com.rpl.agent-o-rama.impl.ui.rpc.config :as rpc-config]
+   [re-frame.query :as rfq]))
 
 (defui config-item [{:keys [module-id agent-name item refetch]}]
   (let [{:keys [key doc current-value default-value input-type]} item
@@ -12,14 +16,14 @@
         is-dirty? (not= (str current-value) (str edit-value))
 
         ;; Subscribe to the submission status for this specific item
-        item-state (state/use-sub [:ui :config-page (keyword key)])
+        item-state (use-subscribe [::aor-rf/get-in [:ui :config-page (keyword key)]])
         submitting? (:submitting? item-state)
         submit-error (:error item-state)]
 
     ;; When the `current-value` prop changes from a refetch, update our local edit state
     (uix/use-effect (fn [] (set-edit-value current-value)) [current-value])
 
-    (let [handle-save #(state/dispatch [:config/submit-change
+    (let [handle-save #(rf/dispatch [:config/submit-change
                                         {:module-id module-id
                                          :agent-name agent-name
                                          :key key
@@ -59,12 +63,12 @@
               submit-error))))))
 
 (defui config-page []
-  (let [{:keys [module-id agent-name]} (state/use-sub [:route :path-params])
-        {:keys [data loading? error] :as query-result}
-        (queries/use-sente-query
-         {:query-key [:agent-config module-id agent-name]
-          :sente-event [:config/get-all {:module-id module-id :agent-name agent-name}]
-          :refetch-interval-ms 5000})]
+  (let [{:keys [module-id agent-name]} (use-subscribe [::aor-rf/get-in [:route :path-params]])
+        {:keys [data error]
+         query-status :status}
+        (use-subscribe [::rfq/query ::rpc-config/get-all!!
+                        {:module-id module-id :agent-name agent-name}])
+        loading? (#{:loading :idle} query-status)]
 
     ($ :div.p-6
        ($ :h2.text-2xl.font-semibold.text-gray-800.mb-2 "Agent Configuration")
@@ -79,4 +83,4 @@
                                     :module-id module-id
                                     :agent-name agent-name
                                     :item item
-                                    :refetch (:refetch query-result)})))))))
+                                    :refetch nil})))))))

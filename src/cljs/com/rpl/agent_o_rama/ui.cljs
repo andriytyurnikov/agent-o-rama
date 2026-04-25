@@ -2,6 +2,7 @@
   (:require
    [uix.core :as uix :refer [defui defhook $]]
    [uix.dom]
+   [uix.re-frame :refer [use-subscribe]]
    [clojure.string :as str]
 
    [com.rpl.agent-o-rama.ui.agents :as agents]
@@ -15,6 +16,10 @@
    [com.rpl.agent-o-rama.ui.experiments.regular-detail :as experiments-detail]
    [com.rpl.agent-o-rama.ui.experiments.comparative-detail :as comparative-experiments-detail]
    [com.rpl.agent-o-rama.ui.analytics :as analytics]
+   [com.rpl.agent-o-rama.impl.ui.rpc.hello-world :as rpc-hello-world]
+   [com.rpl.agent-o-rama.impl.ui.rpc.agents :as rpc-agents]
+   [re-frame.core :as re-frame]
+   [re-frame.query :as rfq]
    [reitit.core :as r]
    [reitit.frontend :as rf]
    [reitit.frontend.easy :as rfe]
@@ -24,8 +29,8 @@
                                           RectangleStackIcon ChartBarIcon BeakerIcon Cog6ToothIcon BoltIcon UserIcon QueueListIcon]]
 
    [com.rpl.agent-o-rama.ui.common :as common]
-   [com.rpl.agent-o-rama.ui.sente :as sente]
-   [com.rpl.agent-o-rama.ui.state :as state]
+   [com.rpl.agent-o-rama.ui.re-frame :as aor-re-frame]
+   [com.rpl.agent-o-rama.ui.rpc]
    [com.rpl.agent-o-rama.ui.forms :refer [global-modal-component]]
    [com.rpl.agent-o-rama.ui.queries :as queries]
    [com.rpl.agent-o-rama.ui.events] ;; Ensure event handlers are registered at app startup
@@ -33,7 +38,9 @@
    [com.rpl.agent-o-rama.ui.datasets.add-from-trace]
    [com.rpl.agent-o-rama.ui.rules :as rules]
    [com.rpl.agent-o-rama.ui.action-log :as action-log]
-   [com.rpl.agent-o-rama.ui.human-feedback-queues :as human-feedback-queues]))
+   [com.rpl.agent-o-rama.ui.human-feedback-queues :as human-feedback-queues]
+   [com.rpl.agent-o-rama.ui.invocations.filters]
+   [com.rpl.agent-o-rama.ui.invocations.index :as inv-index]))
 
 (def routes
   [""
@@ -54,6 +61,7 @@
        ["/comparative-experiments/:experiment-id" {:name :module/dataset-detail.comparative-experiment-detail, :views [comparative-experiments-detail/detail-page]}]]]
      ["/evaluations" {:name :module/evaluations, :views [evaluators/index]}]
      ["/human-metrics" {:name :module/human-metrics, :views [human-feedback-queues/metrics-index]}]
+     ["/rpc-hello" {:name :module/rpc-hello, :views [rpc-hello-world/page]}]
      ["/human-feedback-queues"
       ["" {:name :module/human-feedback-queues, :views [human-feedback-queues/index]}]
       ["/:queue-id"
@@ -65,7 +73,8 @@
       ["" {:name :agent/detail, :views [agents/agent]}]
 
       ["/invocations"
-       ["" {:name :agent/invocations, :views [agents/invocations]}]
+       ["" {:name :agent/invocations, :views [inv-index/invocations]
+            :parameters {:query [:map [:filters {:optional true} :string]]}}]
        ["/:invoke-id" {:name :agent/invocation-detail
                        :views [agents/invoke]
                        :parameters {:query [:map
@@ -82,7 +91,7 @@
       ["/config" {:name :agent/config, :views [config-page/config-page]}]]]]])
 
 (defui ViewStack []
-  (let [match (state/use-sub [:route])
+  (let [match (use-subscribe [::aor-re-frame/get-in [:route]])
         ;; Get the stack of views to render from the route data.
         ;; Defaults to an empty vector if no views are defined for the route.
         view-stack (get-in match [:data :views] [])
@@ -107,7 +116,7 @@
      #(do
         (reset! router-instance router)
         (rfe/start! router
-                    (fn [new-match] (state/dispatch [:route/navigated new-match]))
+                    (fn [new-match] (re-frame/dispatch [:route/navigated new-match]))
                     {:use-fragment false}))
      [router])
     ($ :<> children)))
@@ -133,7 +142,7 @@
 
 ;; Agent-specific navigation component
 (defui agent-context-nav [{:keys [module-id agent-name collapsed?]}]
-  (let [location (or (get-in (state/use-sub [:route]) [:path]) "/")]
+  (let [location (or (get-in (use-subscribe [::aor-re-frame/get-in [:route]]) [:path]) "/")]
     ($ :div.border-t.border-gray-300.my-3.pt-3.space-y-2
        (when-not collapsed?
          ($ :div.px-3.text-xs.font-semibold.text-gray-500 "AGENT"))
@@ -160,13 +169,12 @@
 
 ;; Module-specific navigation component
 (defui module-context-nav [{:keys [module-id collapsed?]}]
-  (let [location (or (get-in (state/use-sub [:route]) [:path]) "/")
+  (let [location (or (get-in (use-subscribe [::aor-re-frame/get-in [:route]]) [:path]) "/")
         ;; Query for module-specific agents
-        {:keys [data loading? error]}
-        (queries/use-sente-query
-         {:query-key [:module-agents module-id]
-          :sente-event [:agents/get-for-module {:module-id module-id}]
-          :enabled? (boolean module-id)})]
+        {:keys [data error]
+         agents-status :status}
+        (use-subscribe [::rfq/query ::rpc-agents/get-for-module!! {:module-id module-id}])
+        loading? (#{:loading :idle} agents-status)]
     ($ :div.border-t.border-gray-300.my-3.pt-3.space-y-2
        (when-not collapsed?
          ($ :div.px-3.text-xs.font-semibold.text-gray-500 "MODULE"))
@@ -230,7 +238,7 @@
                   ($ :span.ml-3.truncate decoded-agent-name)))))))))
 
 (defui sidebar-nav []
-  (let [match (state/use-sub [:route])
+  (let [match (use-subscribe [::aor-re-frame/get-in [:route]])
         location (or (:path match) "/")
         {:keys [module-id agent-name]} (or (:path-params match) {})
         route-name (get-in match [:data :name])
@@ -279,7 +287,7 @@
 ;; =============================================================================
 
 (defui breadcrumb []
-  (let [match (state/use-sub [:route])
+  (let [match (use-subscribe [::aor-re-frame/get-in [:route]])
         {:keys [module-id agent-name dataset-id invoke-id rule-name queue-id item-id]} (or (:path-params match) {})
         route-name (get-in match [:data :name])
 
@@ -415,10 +423,16 @@
 
 (defui app [] ($ with-router {:routes routes} ($ main-layout)))
 
+(re-frame/reg-event-db ::init-db
+  (fn [db [_ seed]]
+    (merge aor-re-frame/default-app-db
+           db
+           seed)))
+
 (defn init []
-  (sente/init!)
+  ;; Seed re-frame app-db with base UI state (forms, modal) at startup
+  (re-frame/dispatch-sync [::init-db {}])
   (uix.dom/render-root
    ($ app)
    (uix.dom/create-root
     (.getElementById js/document "root"))))
-

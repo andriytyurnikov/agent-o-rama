@@ -5,6 +5,29 @@
    [uix.core :as uix :refer [defhook defui $]]
    ["@heroicons/react/24/outline" :refer [ChevronDownIcon InformationCircleIcon]]))
 
+(defn has-more-pages?
+  "True when backend `pagination-params` indicates another page exists."
+  [pagination-params]
+  (boolean
+   (cond
+     (nil? pagination-params) false
+     (string? pagination-params) (seq pagination-params)
+     (map? pagination-params) (some some? (vals pagination-params))
+     (uuid? pagination-params) true
+     :else false)))
+
+(defn pagination-cursor-for-next-page
+  "Cursor for the next page request, or nil if none."
+  [pagination-params]
+  (when (has-more-pages? pagination-params)
+    pagination-params))
+
+(defn full-page-of-items?
+  "True when `items` has at least `limit` entries (Rama queries can return > limit)."
+  [items limit]
+  (and (pos? (or limit 0))
+       (>= (count items) limit)))
+
 ;; =============================================================================
 ;; EVALUATOR TYPE HELPERS (moved here to avoid circular dependencies)
 ;; =============================================================================
@@ -113,7 +136,13 @@
 (def reader (t/reader :json))
 (def writer (t/writer :json))
 
-(defn pp [x] (with-out-str (cljs.pprint/pprint x)))
+(def ^:private default-pprint-length 200)
+(def ^:private default-pprint-level 12)
+
+(defn pp [x]
+  (binding [*print-length* default-pprint-length
+            *print-level* default-pprint-level]
+    (with-out-str (cljs.pprint/pprint x))))
 
 (defn to-json [x]
   "Converts a ClojureScript data structure to a JSON string."
@@ -124,11 +153,30 @@
   (js/JSON.stringify (clj->js x) nil 2))
 
 (defn pretty-format [item]
-  "Format data structure with proper indentation and formatting using pprint.
-  Strings are returned as-is to preserve their actual newlines and whitespace."
+  "Format data structure with indentation via pprint. Bounded by `*print-length*` /
+  `*print-level*` so large collections do not blow the main thread.
+  Strings are returned as-is to preserve newlines and whitespace."
   (if (string? item)
     item
-    (with-out-str (cljs.pprint/pprint item))))
+    (binding [*print-length* default-pprint-length
+              *print-level* default-pprint-level]
+      (with-out-str (cljs.pprint/pprint item)))))
+
+(def ^:private preview-pr-length 64)
+(def ^:private preview-pr-level 8)
+
+(defn preview-line
+  "Single-line preview for UI: bounded `pr-str` for non-strings (fast), then truncate to
+  `max-len`. Strings skip `pr-str` and are only character-capped."
+  [x max-len]
+  (let [s (if (string? x)
+            x
+            (binding [*print-length* preview-pr-length
+                      *print-level* preview-pr-level]
+              (pr-str x)))]
+    (if (<= (count s) max-len)
+      {:text s :truncated? false}
+      {:text (str (subs s 0 (max 0 (- max-len 3))) "...") :truncated? true})))
 
 (defn format-timestamp [ms]
   (if (number? ms)
@@ -348,19 +396,15 @@
 ;; A reusable component for displaying truncated content that expands into a modal.
 (defui ExpandableContent [{:keys [content truncate-length modal-title color on-expand]
                            :or {truncate-length 150}}]
-  (let [content-str (pretty-format content) ; Use pretty-format to preserve string whitespace
-        is-long? (> (count content-str) truncate-length)
-        truncated-str (if is-long?
-                        (str (subs content-str 0 truncate-length) "...")
-                        content-str)
+  (let [{:keys [text truncated?]} (preview-line content truncate-length)
         handle-expand (fn [e]
                         (.stopPropagation e)
                         (when on-expand
                           (on-expand {:title modal-title
-                                      :content content-str})))]
+                                      :content (pretty-format content)})))]
     ($ :div {:className (cn "relative group p-2 rounded min-w-0"
-                            (when is-long? "cursor-pointer hover:bg-gray-100"))
-             :onClick (when is-long? handle-expand)}
+                            (when truncated? "cursor-pointer hover:bg-gray-100"))
+             :onClick (when truncated? handle-expand)}
        ($ :pre {:className (cn "text-sm font-mono whitespace-pre-wrap break-words overflow-x-auto"
                                (str "text-" color "-800"))}
-          truncated-str))))
+          text))))

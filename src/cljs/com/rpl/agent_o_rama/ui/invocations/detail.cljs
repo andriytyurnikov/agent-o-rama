@@ -1,20 +1,23 @@
-(ns com.rpl.agent-o-rama.ui.invocation-page
+(ns com.rpl.agent-o-rama.ui.invocations.detail
   (:require
+   [re-frame.core :as rf]
+   [uix.re-frame :refer [use-subscribe]]
+   [com.rpl.agent-o-rama.ui.re-frame :as aor-rf]
    [uix.core :as uix :refer [$ defui]]
-   [com.rpl.agent-o-rama.ui.state :as state]
    [com.rpl.agent-o-rama.ui.events] ;; Load event handlers
-   [com.rpl.agent-o-rama.ui.invocation-graph-view :as view]
-   [com.rpl.agent-o-rama.ui.sente :as sente]
+   [com.rpl.agent-o-rama.ui.invocations.graph-view :as view]
+   [com.rpl.agent-o-rama.ui.rpc :as rpc]
+   [com.rpl.agent-o-rama.impl.ui.rpc.invocations :as rpc-invocations]
    [com.rpl.agent-o-rama.ui.common :as common]
    [com.rpl.specter :as s]
    [reitit.frontend.easy :as rfe]))
 
 (defui invocation-page []
-  (let [{:keys [module-id agent-name invoke-id]} (state/use-sub [:route :path-params])
-        query-params (state/use-sub [:route :query-params])
+  (let [{:keys [module-id agent-name invoke-id]} (use-subscribe [::aor-rf/get-in [:route :path-params]])
+        query-params (use-subscribe [::aor-rf/get-in [:route :query-params]])
         node-query-param (:node query-params)
 
-        invocation-state (state/use-sub [:invocations-data invoke-id])
+        invocation-state (use-subscribe [::aor-rf/get-in [:invocations-data invoke-id]])
 
         {:keys [status graph summary is-complete implicit-edges
                 root-invoke-id task-id forks fork-of error]}
@@ -26,12 +29,9 @@
         summary-data summary
 
         ;; UI state subscriptions
-        selected-node-id (state/use-sub [:ui :selected-node-id])
-        forking-mode? (state/use-sub [:ui :forking-mode?])
-        changed-nodes (state/use-sub [:ui :changed-nodes])
-
-        ;; Connection state
-        connected? (state/use-sub [:sente :connected?])
+        selected-node-id (use-subscribe [::aor-rf/get-in [:ui :selected-node-id]])
+        forking-mode? (use-subscribe [::aor-rf/get-in [:ui :forking-mode?]])
+        changed-nodes (use-subscribe [::aor-rf/get-in [:ui :changed-nodes]])
 
         ;; Transform nodes to graph-data format
         graph-data (when nodes
@@ -42,15 +42,15 @@
         ;; 2. The single useEffect to initiate data loading
         _ (uix/use-effect
            (fn []
-             (when (and invoke-id module-id agent-name connected?)
-               (state/dispatch [:invocation/start-graph-loading
+             (when (and invoke-id module-id agent-name)
+               (rf/dispatch [:invocation/start-graph-loading
                                 {:invoke-id invoke-id
                                  :module-id module-id
                                  :agent-name agent-name}]))
              ;; Cleanup function
              (fn []
-               (state/dispatch [:invocation/cleanup {:invoke-id invoke-id}])))
-           [invoke-id module-id agent-name connected?])
+               (rf/dispatch [:invocation/cleanup {:invoke-id invoke-id}])))
+           [invoke-id module-id agent-name])
 
         ;; Auto-select node when graph data loads
         ;; Priority: 1) node from query param, 2) root node, 3) any first node
@@ -72,44 +72,42 @@
                      ;; Fallback to root node
                      node-to-select (or node-from-query root-invoke-id)]
                  (when node-to-select
-                   (state/dispatch [:db/set-value [:ui :selected-node-id] node-to-select])))))
+                   (rf/dispatch [:db/set-value [:ui :selected-node-id] node-to-select])))))
            [graph-data root-invoke-id selected-node-id node-query-param])
 
         ;; 3. Polling effect removed in favor of unified streaming loop in events
 
         ;; 4. Define callback functions that dispatch events
         handle-select-node (fn [node-id]
-                             (state/dispatch [:db/set-value [:ui :selected-node-id] node-id]))
+                             (rf/dispatch [:db/set-value [:ui :selected-node-id] node-id]))
 
         handle-execute-fork (fn []
                               (when (not (empty? changed-nodes))
-                                (sente/request!
-                                 [:invocations/execute-fork
-                                  {:module-id module-id
-                                   :agent-name agent-name
-                                   :invoke-id invoke-id
-                                   :changed-nodes changed-nodes}]
-                                 5000
-                                 (fn [reply]
-                                   (if (:success reply)
-                                     (let [{:keys [task-id agent-invoke-id]} (:data reply)
-                                           new-path (str "/agents/" (common/url-encode module-id) "/agent/" (common/url-encode agent-name)
-                                                         "/invocations/" task-id "-" agent-invoke-id)]
-                                       (state/dispatch [:ui/clear-fork-state])
-                                       (rfe/push-state :agent/invocation-detail {:module-id module-id :agent-name agent-name :invoke-id (str task-id "-" agent-invoke-id)}))
-                                     (js/console.error "Fork failed:" (:error reply)))))))
+                                (-> (rpc/call ::rpc-invocations/execute-fork!!
+                                              {:module-id module-id
+                                               :agent-name agent-name
+                                               :invoke-id invoke-id
+                                               :changed-nodes changed-nodes})
+                                    (.then (fn [data]
+                                             (let [{:keys [task-id agent-invoke-id]} data]
+                                               (rf/dispatch [:ui/clear-fork-state])
+                                               (rfe/push-state :agent/invocation-detail
+                                                               {:module-id module-id :agent-name agent-name
+                                                                :invoke-id (str task-id "-" agent-invoke-id)}))))
+                                    (.catch (fn [err]
+                                              (js/console.error "Fork failed:" (if (map? err) (or (:error err) (str err)) (str err))))))))
 
         handle-clear-fork (fn []
-                            (state/dispatch [:ui/clear-fork-state]))
+                            (rf/dispatch [:ui/clear-fork-state]))
 
         handle-change-node-input (fn [node-id new-input]
-                                   (state/dispatch [:db/update-value [:ui :changed-nodes] #(assoc % node-id new-input)]))
+                                   (rf/dispatch [:db/update-value [:ui :changed-nodes] #(assoc % node-id new-input)]))
 
         handle-remove-node-change (fn [node-id]
-                                    (state/dispatch [:db/update-value [:ui :changed-nodes] #(dissoc % node-id)]))
+                                    (rf/dispatch [:db/update-value [:ui :changed-nodes] #(dissoc % node-id)]))
 
         handle-toggle-forking-mode (fn []
-                                     (state/dispatch [:ui/toggle-forking-mode]))
+                                     (rf/dispatch [:ui/toggle-forking-mode]))
 
         handle-paginate-node (fn [missing-node-id] :todo)
 
@@ -126,7 +124,7 @@
                     :implicit-edges (or implicit-edges [])
                     :is-complete is-complete
                     :is-live (not is-complete)
-                    :connected? connected?
+                    :connected? true
                     :selected-node-id selected-node-id
                     :forking-mode? forking-mode?
                     :changed-nodes changed-nodes

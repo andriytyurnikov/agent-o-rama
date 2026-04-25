@@ -42,7 +42,6 @@
                  ;; ui dependencies
                  [ring/ring-core "1.9.5" :exclusions [org.clojure/clojure]]
                  [ring/ring-codec "1.2.0" :exclusions [org.clojure/clojure]]
-                 [com.taoensso/sente "1.20.0" :exclusions [org.clojure/clojure]]
                  [ring/ring-defaults "0.4.0" :exclusions [org.clojure/clojure]]
                  [ring-cors/ring-cors "0.1.13" :exclusions [org.clojure/clojure]]
                  [com.cognitect/transit-clj "1.0.333" :exclusions [org.clojure/clojure]]
@@ -74,9 +73,11 @@
                             "1.8.0-beta15"]
                            [thheller/shadow-cljs "3.1.7"]
                            [etaoin "1.1.43"]
+                           [com.blockether/spel "0.7.11"]
                            [clj-test-containers/clj-test-containers "0.7.4"]
                            [org.testcontainers/testcontainers "2.0.3"]
-                           [clj-kondo "2025.09.22"]]}
+                           [clj-kondo "2025.09.22"]
+                           [org.clojars.abhinav/snitch "0.1.16"]]}
              :examples   {:test-paths   ["examples/clj/test"]
                           :source-paths ["examples/clj/src"]}
              :provided   {:dependencies [[com.rpl/rama "1.2.0"]
@@ -89,6 +90,8 @@
                           :dependencies [[com.rpl/specter "1.1.4"] ;; only cljs
                                          [com.pitch/uix.core "1.4.3"]
                                          [com.pitch/uix.dom "1.4.3"]
+                                         [re-frame "1.4.3"]
+                                         [com.shipclojure/re-frame-query "0.5.0"]
                                          [thheller/shadow-cljs "3.1.7"]
                                          [cider/cider-nrepl "0.57.0"]
                                          [metosin/reitit-frontend "0.7.2"]

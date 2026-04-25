@@ -1,10 +1,13 @@
 (ns com.rpl.agent-o-rama.ui.action-log
   (:require
+   [re-frame.core :as rf]
+   [uix.re-frame :refer [use-subscribe]]
+   [com.rpl.agent-o-rama.ui.re-frame :as aor-rf]
    [uix.core :as uix :refer [defui $]]
    [clojure.string :as str]
    [com.rpl.agent-o-rama.ui.common :as common]
-   [com.rpl.agent-o-rama.ui.sente :as sente]
-   [com.rpl.agent-o-rama.ui.state :as state]
+   [com.rpl.agent-o-rama.ui.rpc :as rpc]
+   [com.rpl.agent-o-rama.impl.ui.rpc.analytics :as rpc-analytics]
    ["@heroicons/react/24/outline" :refer [ArrowTopRightOnSquareIcon]]))
 
 (defn format-action-field
@@ -28,7 +31,7 @@
         eval-invoke (get info-map "eval-invoke")
 
         show-modal (fn []
-                     (state/dispatch
+                     (rf/dispatch
                       [:modal/show
                        :info-map
                        {:title "Action Info"
@@ -98,41 +101,38 @@
 (defui action-log-page
   "Display action log for a specific rule with pagination."
   []
-  (let [{:keys [module-id agent-name rule-name]} (state/use-sub [:route :path-params])
+  (let [{:keys [module-id agent-name rule-name]} (use-subscribe [::aor-rf/get-in [:route :path-params]])
         [actions set-actions!] (uix/use-state [])
         [pagination-params set-pagination-params!] (uix/use-state nil)
         [has-more? set-has-more!] (uix/use-state false)
         [loading? set-loading!] (uix/use-state true)
         [error set-error!] (uix/use-state nil)
-        connected? (state/use-sub [:sente :connected?])
 
         fetch-actions (uix/use-callback
                        (fn [page-params append?]
                          (set-loading! true)
-                         (sente/request!
-                          [:analytics/fetch-action-log
-                           {:module-id module-id
-                            :agent-name agent-name
-                            :rule-name rule-name
-                            :page-size 50
-                            :pagination-params page-params}]
-                          5000
-                          (fn [reply]
-                            (set-loading! false)
-                            (if (:success reply)
-                              (let [data (:data reply)
-                                    new-actions (:actions data)
-                                    new-pagination (:pagination-params data)
-                                    has-more? (and new-pagination
-                                                   (not (empty? new-pagination))
-                                                   (some (fn [[_ item-id]] (not (nil? item-id)))
-                                                         new-pagination))]
-                                (if append?
-                                  (set-actions! (fn [prev] (concat prev new-actions)))
-                                  (set-actions! new-actions))
-                                (set-pagination-params! (when has-more? new-pagination))
-                                (set-has-more! has-more?))
-                              (set-error! (or (:error reply) "Failed to fetch action log"))))))
+                         (-> (rpc/call ::rpc-analytics/fetch-action-log!!
+                                        {:module-id module-id
+                                         :agent-name agent-name
+                                         :rule-name rule-name
+                                         :page-size 50
+                                         :pagination-params page-params})
+                             (.then (fn [data]
+                                      (set-loading! false)
+                                      (let [new-actions (:actions data)
+                                            new-pagination (:pagination-params data)
+                                            has-more? (and new-pagination
+                                                           (not (empty? new-pagination))
+                                                           (some (fn [[_ item-id]] (not (nil? item-id)))
+                                                                 new-pagination))]
+                                        (if append?
+                                          (set-actions! (fn [prev] (concat prev new-actions)))
+                                          (set-actions! new-actions))
+                                        (set-pagination-params! (when has-more? new-pagination))
+                                        (set-has-more! has-more?))))
+                             (.catch (fn [err]
+                                       (set-loading! false)
+                                       (set-error! (if (map? err) (or (:error err) (str err)) (str err)))))))
                        [module-id agent-name rule-name])
 
         load-more (fn []
@@ -141,10 +141,10 @@
 
     (uix/use-effect
      (fn []
-       (when (and connected? module-id agent-name rule-name)
+       (when (and module-id agent-name rule-name)
          (fetch-actions nil false))
        js/undefined)
-     [fetch-actions connected? module-id agent-name rule-name])
+     [fetch-actions module-id agent-name rule-name])
 
     ($ :div.p-6
 
