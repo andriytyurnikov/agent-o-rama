@@ -5,7 +5,8 @@
    [uix.re-frame :refer [use-subscribe]]
    [clojure.string :as str]
 
-   [com.rpl.agent-o-rama.ui.agents :as agents]
+   [com.rpl.agent-o-rama.ui.agents.index :as agents-index]
+   [com.rpl.agent-o-rama.ui.agents.detail :as agents-detail]
    [com.rpl.agent-o-rama.ui.config-page :as config-page]
    [com.rpl.agent-o-rama.ui.global-config-page :as global-config-page]
    [com.rpl.agent-o-rama.ui.datasets :as datasets]
@@ -40,13 +41,14 @@
    [com.rpl.agent-o-rama.ui.action-log :as action-log]
    [com.rpl.agent-o-rama.ui.human-feedback-queues :as human-feedback-queues]
    [com.rpl.agent-o-rama.ui.invocations.filters]
-   [com.rpl.agent-o-rama.ui.invocations.index :as inv-index]))
+   [com.rpl.agent-o-rama.ui.invocations.index :as inv-index]
+   [com.rpl.agent-o-rama.ui.invocations.detail :as inv-detail]))
 
 (def routes
   [""
-   ["/" {:name :home, :views [agents/index]}]
+   ["/" {:name :home, :views [agents-index/index]}]
    ["/agents"
-    ["" {:name :agents/index, :views [agents/index]}]
+    ["" {:name :agents/index, :views [agents-index/index]}]
     ["/:module-id"
      ["" {:name :module/detail, :views [module-page/index]}]
      ["/datasets"
@@ -70,13 +72,13 @@
        ["/end" {:name :module/human-feedback-queue-end, :views [human-feedback-queues/queue-end]}]]]
      ["/global-config" {:name :module/global-config, :views [global-config-page/page]}]
      ["/agent/:agent-name"
-      ["" {:name :agent/detail, :views [agents/agent]}]
+      ["" {:name :agent/detail, :views [agents-detail/agent]}]
 
       ["/invocations"
        ["" {:name :agent/invocations, :views [inv-index/invocations]
             :parameters {:query [:map [:filters {:optional true} :string]]}}]
        ["/:invoke-id" {:name :agent/invocation-detail
-                       :views [agents/invoke]
+                       :views [inv-detail/invocation-page]
                        :parameters {:query [:map
                                             [:node {:optional true} :string]]}}]]
       ["/analytics" {:name :agent/analytics
