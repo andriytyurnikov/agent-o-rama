@@ -8,7 +8,9 @@
    [com.rpl.agent-o-rama.ui.agents :as agents]
    [com.rpl.agent-o-rama.ui.config-page :as config-page]
    [com.rpl.agent-o-rama.ui.global-config-page :as global-config-page]
-   [com.rpl.agent-o-rama.ui.datasets :as datasets]
+   [com.rpl.agent-o-rama.ui.datasets.index :as datasets-index]
+   [com.rpl.agent-o-rama.ui.datasets.detail :as datasets-detail]
+   [com.rpl.agent-o-rama.ui.datasets.examples :as datasets-examples]
    [com.rpl.agent-o-rama.ui.evaluators :as evaluators]
    [com.rpl.agent-o-rama.ui.module-page :as module-page]
    [com.rpl.agent-o-rama.ui.experiments.index :as experiments]
@@ -50,11 +52,11 @@
     ["/:module-id"
      ["" {:name :module/detail, :views [module-page/index]}]
      ["/datasets"
-      ["" {:name :module/datasets, :views [datasets/index]}]
+      ["" {:name :module/datasets, :views [datasets-index/index]}]
       ["/:dataset-id"
-       {:name :module/dataset, :views [datasets/detail]}
-       ["" {:name :module/dataset-detail, :views [datasets/detail-examples-router]}]
-       ["/examples" {:name :module/dataset-detail.examples, :views [datasets/detail-examples-router]}]
+       {:name :module/dataset, :views [datasets-detail/detail]}
+       ["" {:name :module/dataset-detail, :views [datasets-examples/detail-examples-router]}]
+       ["/examples" {:name :module/dataset-detail.examples, :views [datasets-examples/detail-examples-router]}]
        ["/experiments" {:name :module/dataset-detail.experiments, :views [experiments/index]}]
        ["/experiments/:experiment-id" {:name :module/dataset-detail.experiment-detail, :views [experiments-detail/regular-experiment-detail-page]}]
        ["/comparative-experiments" {:name :module/dataset-detail.comparative-experiments, :views [comparative-experiments/index]}]
