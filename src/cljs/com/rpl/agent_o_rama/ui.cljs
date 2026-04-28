@@ -41,7 +41,11 @@
    [com.rpl.agent-o-rama.ui.datasets.add-from-trace]
    [com.rpl.agent-o-rama.ui.rules :as rules]
    [com.rpl.agent-o-rama.ui.action-log :as action-log]
-   [com.rpl.agent-o-rama.ui.human-feedback-queues :as human-feedback-queues]
+   [com.rpl.agent-o-rama.ui.human-feedback.metrics-index :as hf-metrics]
+   [com.rpl.agent-o-rama.ui.human-feedback.queues.index :as hf-queues-index]
+   [com.rpl.agent-o-rama.ui.human-feedback.queues.detail :as hf-queues-detail]
+   [com.rpl.agent-o-rama.ui.human-feedback.queues.item-detail :as hf-queues-item]
+   [com.rpl.agent-o-rama.ui.human-feedback.queues.queue-end :as hf-queues-end]
    [com.rpl.agent-o-rama.ui.invocations.filters]
    [com.rpl.agent-o-rama.ui.invocations.index :as inv-index]
    [com.rpl.agent-o-rama.ui.invocations.detail :as inv-detail]))
@@ -64,14 +68,14 @@
        ["/comparative-experiments" {:name :module/dataset-detail.comparative-experiments, :views [comparative-experiments/index]}]
        ["/comparative-experiments/:experiment-id" {:name :module/dataset-detail.comparative-experiment-detail, :views [comparative-experiments-detail/detail-page]}]]]
      ["/evaluations" {:name :module/evaluations, :views [evaluators/index]}]
-     ["/human-metrics" {:name :module/human-metrics, :views [human-feedback-queues/metrics-index]}]
+     ["/human-metrics" {:name :module/human-metrics, :views [hf-metrics/metrics-index]}]
      ["/rpc-hello" {:name :module/rpc-hello, :views [rpc-hello-world/page]}]
      ["/human-feedback-queues"
-      ["" {:name :module/human-feedback-queues, :views [human-feedback-queues/index]}]
+      ["" {:name :module/human-feedback-queues, :views [hf-queues-index/index]}]
       ["/:queue-id"
-       ["" {:name :module/human-feedback-queue-detail, :views [human-feedback-queues/detail]}]
-       ["/items/:item-id" {:name :module/human-feedback-queue-item, :views [human-feedback-queues/item-detail]}]
-       ["/end" {:name :module/human-feedback-queue-end, :views [human-feedback-queues/queue-end]}]]]
+       ["" {:name :module/human-feedback-queue-detail, :views [hf-queues-detail/detail]}]
+       ["/items/:item-id" {:name :module/human-feedback-queue-item, :views [hf-queues-item/item-detail]}]
+       ["/end" {:name :module/human-feedback-queue-end, :views [hf-queues-end/queue-end]}]]]
      ["/global-config" {:name :module/global-config, :views [global-config-page/page]}]
      ["/agent/:agent-name"
       ["" {:name :agent/detail, :views [agents-detail/agent]}]
