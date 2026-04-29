@@ -19,7 +19,6 @@
    [com.rpl.agent-o-rama.ui.experiments.regular-detail :as experiments-detail]
    [com.rpl.agent-o-rama.ui.experiments.comparative-detail :as comparative-experiments-detail]
    [com.rpl.agent-o-rama.ui.analytics :as analytics]
-   [com.rpl.agent-o-rama.impl.ui.rpc.hello-world :as rpc-hello-world]
    [com.rpl.agent-o-rama.impl.ui.rpc.agents :as rpc-agents]
    [re-frame.core :as re-frame]
    [re-frame.query :as rfq]
@@ -69,7 +68,6 @@
        ["/comparative-experiments/:experiment-id" {:name :module/dataset-detail.comparative-experiment-detail, :views [comparative-experiments-detail/detail-page]}]]]
      ["/evaluations" {:name :module/evaluations, :views [evaluators/index]}]
      ["/human-metrics" {:name :module/human-metrics, :views [hf-metrics/metrics-index]}]
-     ["/rpc-hello" {:name :module/rpc-hello, :views [rpc-hello-world/page]}]
      ["/human-feedback-queues"
       ["" {:name :module/human-feedback-queues, :views [hf-queues-index/index]}]
       ["/:queue-id"
