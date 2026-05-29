@@ -80,8 +80,8 @@
                            [org.clojars.abhinav/snitch "0.1.16"]]}
              :examples   {:test-paths   ["examples/clj/test"]
                           :source-paths ["examples/clj/src"]}
-             :provided   {:dependencies [[com.rpl/rama "1.2.0"]
-                                         [org.clojure/clojure "1.12.2"]]}
+             :provided   {:dependencies [[com.rpl/rama "1.8.0"]
+                                         [org.clojure/clojure "1.12.4"]]}
              :gen        {:prep-tasks   []
                           :source-paths ["scripts"]
                           :dependencies [[comb "0.1.1"]
