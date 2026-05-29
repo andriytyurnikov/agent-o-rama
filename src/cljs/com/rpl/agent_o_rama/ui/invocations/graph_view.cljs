@@ -21,10 +21,11 @@
    [reitit.frontend.easy :as rfe]
    [com.rpl.agent-o-rama.ui.rpc :as rpc]
    [com.rpl.agent-o-rama.impl.ui.rpc.invocations :as rpc-invocations]
+   [com.rpl.agent-o-rama.ui.invocations.graph-node :as gn]
+   [com.rpl.agent-o-rama.ui.invocations.gantt-trace :as gantt]
+   [com.rpl.agent-o-rama.ui.invocations.react-flow-view :as react-flow]
 
    ["react" :refer [useState useCallback useEffect]]
-   ["@xyflow/react" :refer [ReactFlow Background Controls useNodesState useEdgesState Handle MiniMap]]
-   ["@dagrejs/dagre" :as Dagre]
    ["@heroicons/react/24/outline" :refer [ExclamationTriangleIcon ArrowPathIcon ArrowTopRightOnSquareIcon PencilIcon XMarkIcon]]))
 
 (defui ExceptionDetailModal [{:keys [title content]}]
@@ -32,14 +33,7 @@
      ($ :pre.text-xs.bg-gray-50.p-3.rounded.border.overflow-auto.max-h-80.font-mono
         content)))
 
-(defn graph-node-data
-  "Look up a node in `graph-data`; React Flow may stringify `:node-id` while keys stay UUIDs."
-  [graph-data node-id]
-  (when (and graph-data node-id)
-    (or (get graph-data node-id)
-        (get graph-data (str node-id))
-        (let [sid (str node-id)]
-          (some (fn [[k v]] (when (= (str k) sid) v)) graph-data)))))
+(def graph-node-data gn/graph-node-data)
 
 (defn format-ms [ms]
   (let [date (js/Date. ms)
@@ -56,71 +50,9 @@
         millis (.padStart (str (.getMilliseconds date)) 3 "0")]
     (str base "." millis)))
 
-(defn starter-node? [node]
-  (not (nil? (:started-agg? node))))
+(def starter-node? gn/starter-node?)
 
-(defn agg-node? [node]
-  (not (nil? (:agg-state node))))
-
-(defui node-status-bar
-  "Renders a horizontal status bar showing all active node states.
-   Props:
-   - :in-progress? - Node is currently processing
-   - :is-stuck? - Node terminated due to max retries
-   - :has-changes - Node has been modified for forking
-   - :has-human-request - Node is waiting for human input
-   - :has-exceptions - Node has exceptions
-   - :has-result - Node completed successfully"
-  [{:keys [in-progress? is-stuck? has-changes has-human-request has-exceptions has-result]}]
-  (let [;; Collect all active status indicators
-        indicators (cond-> []
-                     ;; In-progress or stuck
-                     (and in-progress? (not is-stuck?))
-                     (conj {:type :spinner
-                            :title "Processing..."})
-
-                     is-stuck?
-                     (conj {:type :stuck
-                            :title "Node terminated due to max retries"})
-
-                     ;; Has changes (forking mode)
-                     has-changes
-                     (conj {:type :changed
-                            :title "Modified for fork"})
-
-                     ;; Human request
-                     has-human-request
-                     (conj {:type :human
-                            :title "Awaiting human input"})
-
-                     ;; Exceptions (only if not stuck)
-                     (and has-exceptions (not is-stuck?))
-                     (conj {:type :exception
-                            :title "Has exceptions"})
-
-                     ;; Successful result
-                     has-result
-                     (conj {:type :success
-                            :title "Completed successfully"}))]
-
-    ;; Render the status bar if there are any indicators
-    (when (seq indicators)
-      ($ :div {:className (common/cn "absolute -top-1 -right-1 flex items-center gap-0.5 rounded-full px-0.5 py-0.5 bg-white border border-gray-200")}
-         (for [{:keys [type title]} indicators]
-           ($ :div {:key type
-                    :className (common/cn "w-3 h-3 flex items-center justify-center")
-                    :title title}
-              (case type
-                :spinner ($ common/spinner {:size :small})
-                :stuck ($ :div {:className (common/cn "w-3 h-3 bg-red-500 rounded-full flex items-center justify-center")}
-                          ($ :svg {:className (common/cn "w-2 h-2 text-white") :fill "none" :viewBox "0 0 24 24" :stroke "currentColor"}
-                             ($ :path {:strokeLinecap "round" :strokeLinejoin "round" :strokeWidth 3 :d "M6 18L18 6M6 6l12 12"})))
-                :changed ($ :div {:className (common/cn "w-3 h-3 bg-orange-400 rounded-full")})
-                :human ($ :div {:className (common/cn "w-3 h-3 flex items-center justify-center text-xs")} "🙋")
-                :exception ($ :div {:className (common/cn "w-3 h-3 bg-yellow-500 rounded-full flex items-center justify-center")}
-                              ($ ExclamationTriangleIcon {:className "w-2 h-2 text-white"}))
-                :success ($ :div {:className (common/cn "w-3 h-3 bg-green-500 rounded-full")})
-                nil)))))))
+(def agg-node? gn/agg-node?)
 
 (defui expandable-item-component [{:keys [item color title truncate-length]
                                    :or {truncate-length 50}}]
@@ -387,10 +319,10 @@
                     ($ :div {:className "flex-1"}
                        ($ :div {:className "flex items-center gap-2"}
                           ($ :span {:className "text-sm font-medium text-indigo-800 bg-indigo-100 px-2 py-1 rounded"}
-                             op-type)
+                              (str op-type))
                           (when (:objectName info)
                             ($ :span {:className "text-sm font-mono text-indigo-700"}
-                               (:objectName info)))))
+                                (str (:objectName info))))))
                     ($ :div {:className "flex items-center gap-2"}
                        (when duration
                          ($ :div {:className "text-xs text-indigo-500 font-mono"
@@ -461,7 +393,7 @@
            ($ :div {:className "mt-2 text-xs text-blue-500"}
               (str (count chunks) " chunk" (when (not= (count chunks) 1) "s") " received")))))))
 
-(defui node-emits-panel [{:keys [emits graph-data flow-nodes on-select-node on-paginate-node]}]
+(defui node-emits-panel [{:keys [emits graph-data on-select-node on-paginate-node]}]
   (when (and emits (> (count emits) 0))
     ($ :div {:className "mt-4 bg-indigo-50 p-3 rounded-md"}
        ($ :div {:className "text-sm font-medium text-indigo-700 mb-2"}
@@ -478,13 +410,8 @@
                        :onClick (fn [e]
                                   (.stopPropagation e)
                                   (if is-loaded
-                                    ;; Find and select the loaded node
-                                    (let [nodes (js->clj flow-nodes :keywordize-keys true)
-                                          target-node (->> nodes
-                                                           (filter #(= (-> % :data :node-id) (:invoke-id emit)))
-                                                           first)]
-                                      (when (and target-node on-select-node)
-                                        (on-select-node (:invoke-id emit))))
+                                    (when on-select-node
+                                      (on-select-node (:invoke-id emit)))
                                     ;; Load the unloaded node
                                     (when on-paginate-node
                                       (on-paginate-node emit-id))))}
@@ -500,7 +427,7 @@
 
 (defui node-details-info-panel [{:keys [data hr hr-invoke-id hitl-response submitting? module-id agent-name invoke-id
                                         node-id node-name result exceptions start-time finish-time duration input
-                                        emits graph-data flow-nodes on-select-node on-paginate-node
+                                        emits graph-data on-select-node on-paginate-node
                                         agent-invoke-id]}]
   (let [raw-node-data (graph-node-data graph-data node-id)]
     ($ :<>
@@ -551,7 +478,6 @@
 
        ($ node-emits-panel {:emits emits
                             :graph-data graph-data
-                            :flow-nodes flow-nodes
                             :on-select-node on-select-node
                             :on-paginate-node on-paginate-node})
 
@@ -559,10 +485,9 @@
                              :finish-time finish-time
                              :duration duration}))))
 
-(defui selected-node-component [{:keys [selected-node graph-data on-paginate-node on-select-node flow-nodes module-id agent-name invoke-id]}]
-  (let [data (when selected-node
-               (js->clj (aget selected-node "data") :keywordize-keys true))
-        node-id (:node-id data)
+(defui selected-node-component [{:keys [selected-node-data graph-data on-paginate-node on-select-node module-id agent-name invoke-id]}]
+  (let [data selected-node-data
+        node-id (when data (:node-id data))
         node-task-id (:agent-task-id data)
         node-name (:node data)
         input (:input data)
@@ -595,7 +520,7 @@
          (rf/dispatch [:db/set-value [:ui :node-details :active-tab] :info])))
      [active-tab])
 
-    (when selected-node
+    (when selected-node-data
       ($ :div {:className (common/cn "mt-6 bg-white shadow-lg rounded-lg border border-gray-200 max-w-4xl")
                :data-id "node-invoke-details-panel"}
          ;; Tab header
@@ -638,7 +563,6 @@
                   :input input
                   :emits emits
                   :graph-data graph-data
-                  :flow-nodes flow-nodes
                   :on-select-node on-select-node
                   :on-paginate-node on-paginate-node})
 
@@ -657,9 +581,8 @@
               ;; Default case
               nil))))))
 
-(defui forking-input-component [{:keys [selected-node changed-nodes on-change-node-input affected-nodes]}]
-  (let [data (when selected-node
-               (js->clj (aget selected-node "data") :keywordize-keys true))
+(defui forking-input-component [{:keys [selected-node-data changed-nodes on-change-node-input affected-nodes]}]
+  (let [data selected-node-data
         node-id (:node-id data)
         node-name (:node data)
         original-input (:input data)
@@ -679,15 +602,13 @@
     ;; Update input text when selected node changes
     (uix/use-effect
      (fn []
-       (when selected-node
-         (let [data (js->clj (aget selected-node "data") :keywordize-keys true)
-               node-id (:node-id data)
-               original-input (:input data)
+       (when selected-node-data
+         (let [original-input (:input selected-node-data)
                current-input (get changed-nodes node-id (to-pretty-json original-input))]
            (set-input-text current-input))))
-     [selected-node changed-nodes])
+     [selected-node-data changed-nodes node-id])
 
-    (when selected-node
+    (when selected-node-data
       ($ :div {:className (common/cn "mt-6 bg-white shadow-lg rounded-lg border border-gray-200 max-w-4xl")}
          ($ :div {:className "p-6"}
             ($ :div {:className "mb-4"}
@@ -983,7 +904,7 @@
                                               :agent-name agent-name}]))
                           :is-live? (not (:finish-time-millis summary-data))}))))
 
-(defui fork-panel [{:keys [changed-nodes graph-data affected-nodes flow-nodes on-select-node on-remove-node-change on-execute-fork on-clear-fork]}]
+(defui fork-panel [{:keys [changed-nodes graph-data affected-nodes on-select-node on-remove-node-change on-execute-fork on-clear-fork]}]
   (if (empty? changed-nodes)
     ($ :div {:className "text-gray-500 text-center py-8"
              :data-id "fork-empty-state"}
@@ -999,13 +920,8 @@
                   is-overridden (contains? affected-nodes node-id)
                   handle-select-node (fn [e]
                                        (.stopPropagation e)
-                                       ;; Find the corresponding flow node and select it
-                                       (let [nodes (js->clj flow-nodes :keywordize-keys true)
-                                             target-node (->> nodes
-                                                              (filter #(= (-> % :data :node-id) node-id))
-                                                              first)]
-                                         (when (and target-node on-select-node)
-                                           (on-select-node node-id))))]
+                                       (when on-select-node
+                                         (on-select-node node-id)))]
 
               ($ :div {:key node-id
                        :className (common/cn "border rounded-lg p-3 cursor-pointer hover:shadow-md transition-shadow"
@@ -1046,7 +962,23 @@
                       :onClick on-clear-fork}
              "Clear All Changes")))))
 
-(defui right-panel [{:keys [graph-data summary-data changed-nodes on-remove-node-change affected-nodes flow-nodes on-select-node on-execute-fork on-clear-fork forking-mode? on-toggle-forking-mode is-live
+(def ^:private default-sidebar-width 320)
+(def ^:private min-sidebar-width 280)
+(def ^:private max-sidebar-width 800)
+(def ^:private expanded-app-sidebar-width 256)
+(def ^:private min-trace-panel-width 320)
+
+(defn- clamp-sidebar-width [width]
+  (let [max-for-viewport (max min-sidebar-width
+                              (- (.-innerWidth js/window)
+                                 expanded-app-sidebar-width
+                                 min-trace-panel-width))
+        max-width (min max-sidebar-width max-for-viewport)]
+    (-> width
+        (max min-sidebar-width)
+        (min max-width))))
+
+(defui right-panel [{:keys [graph-data summary-data changed-nodes on-remove-node-change affected-nodes on-select-node on-execute-fork on-clear-fork forking-mode? on-toggle-forking-mode is-live
                             module-id agent-name task-id forks fork-of invoke-id sidebar-width on-sidebar-width-change]}]
   (let [;; Read tab from URL query params, default to :info
         query-params (use-subscribe [::aor-rf/get-in [:route :query-params]])
@@ -1161,235 +1093,79 @@
             :fork ($ fork-panel {:changed-nodes changed-nodes
                                  :graph-data graph-data
                                  :affected-nodes affected-nodes
-                                 :flow-nodes flow-nodes
                                  :on-select-node on-select-node
                                  :on-remove-node-change on-remove-node-change
                                  :on-execute-fork on-execute-fork
                                  :on-clear-fork on-clear-fork}))))))
 
-(defn process-graph-data
-  "Applies Dagre layout to pre-processed nodes and edges."
-  [nodes-map real-edges implicit-edges]
-  (let [g (new (.. Dagre -graphlib -Graph))
-
-        nodes (->> nodes-map
-                   (map (fn [[id data]]
-                          {:id (str id)
-                           :type "custom"
-                           :draggable false
-                           :data (assoc data
-                                        :label (str (:node data))
-                                        :node-id id)})))
-
-        all-edges (concat real-edges implicit-edges)]
-
-    (.setDefaultEdgeLabel ^js g (fn [] #js {}))
-    (.setGraph ^js g #js {})
-
-    (doseq [edge all-edges] (.setEdge ^js g (:source edge) (:target edge)))
-    (doseq [node nodes]
-      (.setNode ^js g (:id node) (clj->js (merge node {:width 170 :height 40}))))
-
-    (Dagre/layout g)
-
-    (let [nodes-with-layout (for [node nodes
-                                  :let [position (.node g (:id node))]]
-                              (assoc node :position position))]
-      {:nodes nodes-with-layout
-       :edges all-edges})))
-
-(defn find-downstream-nodes
-  "Find all nodes that are downstream from the given set of modified node IDs.
-   This includes nodes that are both modified AND downstream (overridden nodes)."
-  [graph-data modified-node-ids]
-  (let [;; For each modified node, find all nodes downstream from it
-        get-downstream-from-node (fn [start-node-id]
-                                   (loop [to-visit #{start-node-id}
-                                          visited #{}
-                                          downstream #{}]
-                                     (if (empty? to-visit)
-                                       downstream
-                                       (let [current (first to-visit)
-                                             remaining (disj to-visit current)]
-                                         (if (visited current)
-                                           (recur remaining visited downstream)
-                                           (let [node-data (graph-node-data graph-data current)
-                                                 emitted-ids (set (map :invoke-id (:emits node-data)))
-                                                 ;; Add emitted nodes to downstream (but not the starting node)
-                                                 new-downstream (if (= current start-node-id)
-                                                                  downstream
-                                                                  (conj downstream current))
-                                                 new-to-visit (into remaining emitted-ids)]
-                                             (recur new-to-visit
-                                                    (conj visited current)
-                                                    new-downstream)))))))]
-    ;; Collect downstream nodes from all modified nodes
-    (reduce (fn [all-downstream modified-node-id]
-              (into all-downstream (get-downstream-from-node modified-node-id)))
-            #{}
-            modified-node-ids)))
-
-(defui graph-view [{:keys [module-id agent-name invoke-id task-id
-                           forks fork-of
-                           graph-data real-edges summary-data implicit-edges
-                           is-complete is-live connected?
-                           selected-node-id forking-mode? changed-nodes
-                           on-select-node on-execute-fork on-clear-fork
-                           on-change-node-input on-remove-node-change
-                           on-toggle-forking-mode on-paginate-node]}]
-  (let [;; Convert selected-node-id to actual node object when needed
-        [selected-node set-selected-node-internal] (uix/use-state nil)
-
-        ;; Sidebar width state (default 320px)
-        [sidebar-width set-sidebar-width] (common/use-local-storage "graph-sidebar-width" 320)
-
-        affected-nodes (when forking-mode?
-                         (find-downstream-nodes graph-data (set (keys changed-nodes))))
-
-        ;; Use React Flow's state management hooks
-        [flow-nodes set-nodes on-nodes-change] (useNodesState (clj->js []))
-        [flow-edges set-edges on-edges-change] (useEdgesState (clj->js []))
-
-        ;; Update React Flow nodes/edges when graph data changes
-        _ (uix/use-effect
-           (fn []
-             (when (not (empty? graph-data))
-               (let [{:keys [nodes edges]} (process-graph-data graph-data (or real-edges []) (or implicit-edges []))]
-                 (println "Updating flow with nodes:" (count nodes) "and edges:" (count edges))
-                 (set-nodes (clj->js nodes))
-                 (set-edges (clj->js (for [edge edges]
-                                       (if (:implicit? edge)
-                                         (assoc edge :style #js {:strokeDasharray "5 5"
-                                                                 :stroke "#aaa"})
-                                         edge)))))))
-           [graph-data real-edges implicit-edges set-nodes set-edges])
-
-        ;; Update selected node when selected-node-id changes
-        _ (uix/use-effect
-           (fn []
-             (when selected-node-id
-               (let [nodes (js->clj flow-nodes :keywordize-keys true)
-                     target-node (->> nodes
-                                      (filter #(= (-> % :data :node-id) selected-node-id))
-                                      first)]
-                 (when target-node
-                   (set-selected-node-internal (clj->js target-node))))))
-           [selected-node-id flow-nodes])
-
-        ;; Use callbacks passed as props
-        handle-select-node-click (fn [node]
-                                   (when on-select-node
-                                     (let [node-data (js->clj (aget node "data") :keywordize-keys true)]
-                                       (on-select-node (:node-id node-data)))))]
-
+(defui graph-view
+  "Orchestrates trace visualization (graph / Gantt) and the right sidebar."
+  [{:keys [module-id agent-name invoke-id task-id forks fork-of
+           on-select-node on-execute-fork on-clear-fork
+           on-change-node-input on-remove-node-change
+           on-toggle-forking-mode on-paginate-node]}]
+  (let [graph-data (use-subscribe [:invocation/graph-data invoke-id])
+        summary-data (use-subscribe [:invocation/summary invoke-id])
+        [trace-view-mode set-trace-view-mode!] (common/use-local-storage "invocation-trace-view-mode" "graph")
+        sidebar-width (use-subscribe [:invocation/sidebar-width invoke-id])
+        selected-node-data (use-subscribe [:invocation/selected-node-data invoke-id])
+        changed-nodes (use-subscribe [:invocation/changed-nodes invoke-id])
+        forking-mode? (use-subscribe [:invocation/forking-mode? invoke-id])
+        affected-nodes (use-subscribe [:invocation/affected-nodes invoke-id])
+        is-complete (use-subscribe [:invocation/is-complete invoke-id])
+        is-live (not is-complete)
+        effective-sidebar-width (clamp-sidebar-width (or sidebar-width default-sidebar-width))
+        set-sidebar-width! (fn [width]
+                             (rf/dispatch [:invocation/set-sidebar-width invoke-id (clamp-sidebar-width width)]))]
     (if (empty? graph-data)
       ($ :div.flex.justify-center.items-center.py-8
          ($ :div.text-gray-500 "No graph data available"))
       ($ :<>
-         ;; Main content area with right margin for the stats panel
-         ($ :div {:style {:marginRight (str sidebar-width "px")}
+         ($ :div {:style {:marginRight (str effective-sidebar-width "px")}
                   :data-id "agent-graph-panel"}
-            ($ :div {:style {:width "100%" :height "500px"}}
-               ($ ReactFlow {:nodes flow-nodes
-                             :edges flow-edges
-                             :onNodesChange on-nodes-change
-                             :onEdgesChange on-edges-change
-                             :proOptions (clj->js {:hideAttribution true})
-                             :nodeTypes (clj->js {"custom"
-                                                  (uix.core/as-react
-                                                   (fn [{:keys [data id]}]
-                                                     (let [data (js->clj data :keywordize-keys true)
-                                                           label (:label data)
-                                                           node-id (:node-id data)
-                                                           selected (= (when selected-node (aget selected-node "id")) id)
-                                                           has-changes (contains? changed-nodes node-id)
-                                                           is-affected (and forking-mode? (contains? affected-nodes node-id))
-                                                           ;; Check if node is in progress
-                                                           in-progress? (and (:start-time-millis data)
-                                                                             (not (:finish-time-millis data)))
-                                                           ;; NEW: Check if the node is stuck (in-progress but the whole agent has finished)
-                                                           is-stuck? (and in-progress? is-complete)
-                                                           base-classes (cond
-                                                                          is-affected
-                                                                          ["bg-gray-300" "text-gray-500" "border-2" "border-gray-400"]
-
-                                                                          has-changes
-                                                                          ["bg-orange-500" "text-white" "border-2" "border-orange-600"]
-
-                                                                          (agg-node? data)
-                                                                          ["bg-yellow-500" "text-white" "border-2" "border-yellow-600"]
-
-                                                                          (starter-node? data)
-                                                                          ["bg-green-500" "text-white" "border-2" "border-green-600"]
-
-                                                                          :else
-                                                                          ["bg-white" "text-gray-800" "border-2" "border-gray-300"])
-                                                           selection-classes (if selected
-                                                                               ["ring-4" "ring-blue-400" "ring-opacity-75" "shadow-2xl" "transform" "scale-105"]
-                                                                               ["shadow-lg"])
-                                                           common-classes ["p-3" "rounded-md" "transition-all" "duration-200"]
-                                                           node-className (common/cn base-classes selection-classes common-classes)
-                                                           has-human-request (:human-request data)
-                                                           has-exceptions (seq (:exceptions data))]
-                                                       ($ :div {:className "relative"}
-                                                          ($ :div {:className node-className
-                                                                   :style {:width "170px" :height "40px" :opacity (if is-affected "0.6" "1.0")}}
-                                                             ($ :div {:className "truncate" :title label}
-                                                                label))
-                                                          ;; Consolidated status indicator bar in top-right corner
-                                                          ($ node-status-bar {:in-progress? in-progress?
-                                                                              :is-stuck? is-stuck?
-                                                                              :has-changes has-changes
-                                                                              :has-human-request has-human-request
-                                                                              :has-exceptions has-exceptions
-                                                                              :has-result (:result data)})
-                                                          ($ Handle {:type "target" :position "top"})
-                                                          ($ Handle {:type "source" :position "bottom"})))))
-
-                                                  "phantom"
-                                                  (uix.core/as-react
-                                                   (fn [{:keys [data]}]
-                                                     (let [data (js->clj data :keywordize-keys true)
-                                                           missing-node-id (:missing-node-id data)]
-                                                       ($ :div {:className "relative cursor-pointer"
-                                                                :onClick (fn [e]
-                                                                           (.stopPropagation e)
-                                                                           (println "phantom data" data)
-                                                                           (on-paginate-node missing-node-id))}
-                                                          ($ :div {:className "bg-gray-100 text-gray-600 p-3 rounded-md shadow-lg border-2 border-dashed border-gray-400 hover:bg-gray-200 transition-colors"
-                                                                   :style {:width "170px" :height "40px"}}
-                                                             ($ :div {:className "truncate" :title (:label data)}
-                                                                (:label data)))
-                                                          ($ Handle {:type "target" :position "top"})))))})
-                             :defaultEdgeOptions {:style {:strokeWidth 2 :stroke "#a5b4fc"}}
-                             :onNodeClick (fn [_ node] (handle-select-node-click node))}
-                  ($ MiniMap {:position "bottom-right" :pannable true :zoomable true})
-                  ($ Background {:variant "dots" :gap 12 :size 1 :color "#e0e0e0"})
-                  ($ Controls {:className "fill-gray-500 stroke-gray-500"})))
-
-            ;; Show selected node details or forking input component
-            (when selected-node
+            ($ :div {:className "flex items-center gap-2 mb-2 px-1"}
+               ($ :span {:className "text-xs font-medium text-gray-600"} "Trace view")
+               ($ :div {:className "inline-flex rounded-md border border-gray-200 bg-gray-50 p-0.5 text-xs"}
+                  ($ :button {:type "button"
+                              :className (common/cn "px-2 py-1 rounded transition-colors"
+                                                    (if (= trace-view-mode "graph")
+                                                      "bg-white shadow text-gray-900"
+                                                      "text-gray-600 hover:text-gray-900"))
+                              :data-testid "trace-view-graph"
+                              :onClick #(set-trace-view-mode! "graph")}
+                     "Graph")
+                  ($ :button {:type "button"
+                              :className (common/cn "px-2 py-1 rounded transition-colors"
+                                                    (if (= trace-view-mode "gantt")
+                                                      "bg-white shadow text-gray-900"
+                                                      "text-gray-600 hover:text-gray-900"))
+                              :data-testid "trace-view-gantt"
+                              :onClick #(set-trace-view-mode! "gantt")}
+                     "Timeline")))
+            (if (= trace-view-mode "gantt")
+              ($ gantt/gantt-trace-view-connected {:invoke-id invoke-id
+                                                   :on-select-node on-select-node})
+              ($ react-flow/react-flow-view {:invoke-id invoke-id
+                                             :on-select-node on-select-node
+                                             :on-paginate-node on-paginate-node}))
+            (when selected-node-data
               (if forking-mode?
-                ($ forking-input-component {:selected-node selected-node
+                ($ forking-input-component {:selected-node-data selected-node-data
                                             :changed-nodes changed-nodes
                                             :on-change-node-input on-change-node-input
                                             :affected-nodes affected-nodes})
-                ($ selected-node-component {:selected-node selected-node
+                ($ selected-node-component {:selected-node-data selected-node-data
                                             :graph-data graph-data
                                             :on-paginate-node on-paginate-node
                                             :on-select-node on-select-node
-                                            :flow-nodes flow-nodes
                                             :module-id module-id
                                             :agent-name agent-name
                                             :invoke-id invoke-id}))))
-
-         ;; Always-visible right panel with tabs
          ($ right-panel {:graph-data graph-data
                          :summary-data summary-data
                          :changed-nodes changed-nodes
                          :on-remove-node-change on-remove-node-change
                          :affected-nodes affected-nodes
-                         :flow-nodes flow-nodes
                          :on-select-node on-select-node
                          :on-execute-fork on-execute-fork
                          :on-clear-fork on-clear-fork
@@ -1402,5 +1178,5 @@
                          :forks forks
                          :fork-of fork-of
                          :invoke-id invoke-id
-                         :sidebar-width sidebar-width
-                         :on-sidebar-width-change set-sidebar-width})))))
+                         :sidebar-width effective-sidebar-width
+                         :on-sidebar-width-change set-sidebar-width!})))))

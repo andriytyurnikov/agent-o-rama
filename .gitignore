@@ -50,3 +50,6 @@ CLAUDE.md
 # playwright
 test-results/
 playwright-report/
+
+# local UI capture outputs
+dev/screenshots/

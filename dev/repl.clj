@@ -10,7 +10,8 @@
    [com.rpl.agent.basic.basic-agent :as basic-agent]
    [com.rpl.agent.research-agent :as research-agent]
    [com.rpl.agent.e2e-test-agent :as e2e-test-agent]
-   [com.rpl.agent.streaming-test-agent :as streaming-test-agent])
+   [com.rpl.agent.streaming-test-agent :as streaming-test-agent]
+   [com.rpl.agent.gantt-stress-agent :as gantt-stress-agent])
   (:import
    [dev.langchain4j.data.message
     SystemMessage
@@ -45,6 +46,11 @@
   (rtest/launch-module!
    ipc
    streaming-test-agent/StreamingTestAgentModule
+   {:tasks 1 :threads 1})
+  
+  (rtest/launch-module!
+   ipc
+   gantt-stress-agent/GanttStressModule
    {:tasks 1 :threads 1})
 
   ;; Start REPL/UI server AFTER modules are ready
@@ -91,7 +97,6 @@
    ipc
    e2e-test-agent/E2ETestAgentModule
    {:tasks 1 :threads 1})
-  
   (aor/stop-ui)
 
   (start-repl ipc)
@@ -107,6 +112,11 @@
   (rtest/launch-module!
    ipc
    research-agent/ResearchAgentModule
+   {:tasks 1 :threads 1})
+  
+  (rtest/launch-module!
+   ipc
+   gantt-stress-agent/GanttStressModule
    {:tasks 1 :threads 1})
 
   ;; (shadow/watch :dev2)
@@ -222,4 +232,4 @@
 
 
   (shadow/compile :frontend)
-)
+  )

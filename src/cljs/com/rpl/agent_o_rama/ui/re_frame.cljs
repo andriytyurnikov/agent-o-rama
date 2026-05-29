@@ -41,9 +41,7 @@
    :route nil
    :forms {}
    :invocations-filters {}
-   :ui {:selected-node-id nil
-        :forking-mode? false
-        :changed-nodes {}
+   :ui {:invocations {}
         :active-tab :info
         :current-route "/"
         :modal {:active nil
@@ -92,12 +90,12 @@
             path-value-pairs)))
 
 (rf/reg-event-db :ui/toggle-forking-mode
-  (fn [db _]
-    (update-in db [:ui :forking-mode?] not)))
+  (fn [db [_ invoke-id]]
+    (update-in db [:ui :invocations invoke-id :forking-mode?] not)))
 
 (rf/reg-event-db :invocation/update-node
   (fn [db [_ invoke-id node-id node-data]]
-    (update-in db [:invocations-data invoke-id :graph :nodes]
+    (update-in db [:invocations-data (str invoke-id) :graph :nodes]
                (fn [nodes]
                  (assoc (or nodes {}) node-id node-data)))))
 

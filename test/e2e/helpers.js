@@ -362,21 +362,28 @@ export async function createDataset(page, name) {
   await modal.getByRole('button', { name: 'Create Dataset' }).click();
   
   await expect(modal).not.toBeVisible();
-  
-  // Verify dataset was created by searching for it (in case it's not on the first page)
+
+  // Paginated index (page size 3) + parallel E2E — search to find the new row.
   const searchInput = page.getByPlaceholder('Search datasets...');
-  if (await searchInput.isVisible()) {
-    await searchInput.fill(name);
-    await page.waitForTimeout(500); // Wait for debounced search
-    await expect(page.getByText(name)).toBeVisible();
-    await searchInput.clear();
-    await page.waitForTimeout(500); // Wait for search to clear
-  } else {
-    // If no search box, just verify it appears somewhere
-    await expect(page.getByText(name)).toBeVisible();
-  }
-  
+  await expect(searchInput).toBeVisible({ timeout: 15000 });
+  await searchInput.fill(name);
+  await expect(page.getByRole('link', { name })).toBeVisible({ timeout: 30000 });
+
   console.log(`Successfully created dataset: ${name}`);
+}
+
+/**
+ * Opens a dataset from the datasets index (uses search — required under pagination).
+ * @param {import('@playwright/test').Page} page
+ * @param {string} name - Dataset name (exact link text)
+ */
+export async function openDatasetByName(page, name) {
+  const searchInput = page.getByPlaceholder('Search datasets...');
+  await expect(searchInput).toBeVisible({ timeout: 15000 });
+  await searchInput.fill(name);
+  const link = page.getByRole('link', { name });
+  await expect(link).toBeVisible({ timeout: 30000 });
+  await link.click();
 }
 
 /**
@@ -431,25 +438,22 @@ export async function deleteDataset(page, name) {
     }
   };
   page.once('dialog', dialogHandler);
-  
-  // Search for the dataset to ensure it's visible
+
+  // Search input only exists on the datasets index — wait for navigation to finish
+  // (teardown often clicks "Datasets & Experiments" immediately before this call).
   const searchInput = page.getByPlaceholder('Search datasets...');
-  if (await searchInput.isVisible()) {
-    await searchInput.fill(name);
-    await page.waitForTimeout(500);
-  }
-  
+  await expect(searchInput).toBeVisible({ timeout: 15000 });
+
+  await searchInput.fill(name);
   const datasetRow = page.locator('table tbody tr').filter({ hasText: name });
+  await expect(datasetRow).toBeVisible({ timeout: 30000 });
+
   await datasetRow.getByRole('button', { name: 'Delete' }).click();
   
   // Wait a bit for dialog to appear and be handled
   await page.waitForTimeout(500);
   
-  // Clear search to avoid false positives from similar dataset names
-  if (await searchInput.isVisible()) {
-    await searchInput.clear();
-    await page.waitForTimeout(300);
-  }
+  await searchInput.clear();
   
   // Wait for the row to disappear after deletion
   await expect(datasetRow).not.toBeVisible({ timeout: 10000 });
