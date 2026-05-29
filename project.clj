@@ -85,7 +85,7 @@
              :gen        {:prep-tasks   []
                           :source-paths ["scripts"]
                           :dependencies [[comb "0.1.1"]
-                                         [org.clojure/clojure "1.12.2"]]}
+                                         [org.clojure/clojure "1.12.4"]]}
              :ui         {:source-paths ["test/cljs"]
                           :dependencies [[com.rpl/specter "1.1.4"] ;; only cljs
                                          [com.pitch/uix.core "1.4.3"]
@@ -98,7 +98,7 @@
                                          [metosin/reitit-malli "0.7.2"]
                                          ;; to fix dynlink error on arm macs
                                          [net.java.dev.jna/jna "5.17.0"]
-                                         [org.clojure/clojure "1.12.2"]
+                                         [org.clojure/clojure "1.12.4"]
                                          [prismatic/schema "1.4.1"]]}
              :test       {:jvm-opts ["-Daor.test.runner=1"]}
              :nrepl-port {:repl-options {:port 7888}}}
