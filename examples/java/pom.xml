@@ -30,12 +30,12 @@
     <dependency>
       <groupId>com.rpl</groupId>
       <artifactId>agent-o-rama</artifactId>
-      <version>0.7.0</version>
+      <version>0.9.0</version>
     </dependency>
     <dependency>
       <groupId>com.rpl</groupId>
       <artifactId>rama</artifactId>
-      <version>1.2.0</version>
+      <version>1.8.0</version>
       <scope>provided</scope>
     </dependency>
     <dependency>
@@ -49,10 +49,10 @@
       <version>1.4.0-beta10</version>
     </dependency>
     <dependency>
-      <!-- This is needed to get mvn packge to not include this, since transitive provided deps are not respected -->
+      <!-- This is needed to get mvn package to not include this, since transitive provided deps are not respected -->
       <groupId>org.clojure</groupId>
       <artifactId>clojure</artifactId>
-      <version>1.12.2</version>
+      <version>1.12.4</version>
       <scope>provided</scope>
     </dependency>
     <dependency>
