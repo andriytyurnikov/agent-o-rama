@@ -1,8 +1,8 @@
 (defproject com.rpl/agent-o-rama-examples "1.0.0-SNAPSHOT"
-  :dependencies [[com.rpl/agent-o-rama "0.9.0"]
-                 [dev.langchain4j/langchain4j-open-ai "1.4.0"]
+  :dependencies [[com.rpl/agent-o-rama "0.10.0"]
+                 [dev.langchain4j/langchain4j-open-ai "1.18.0"]
                  [dev.langchain4j/langchain4j-web-search-engine-tavily
-                  "1.4.0-beta10"]]
+                  "1.18.0-beta28"]]
   :jvm-opts ["-Xss6m"
              "-Xms6g"
              "-Xmx6g"
@@ -27,7 +27,7 @@
                         :dependencies   [[meander/epsilon "0.0.650"]]
                         :jvm-opts       ["-Xss6m"]}
              :provided {:dependencies
-                        [[com.rpl/rama "1.8.0"]
+                        [[com.rpl/rama "1.9.0"]
                          [org.clojure/clojure "1.12.4"]
                          [org.apache.logging.log4j/log4j-slf4j2-impl
                           "2.25.1"]]}
