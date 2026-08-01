@@ -41,8 +41,11 @@ lein with-profile +ui run -m shadow.cljs.devtools.cli --npm compile :frontend
 # Install to local Maven repository
 lein install
 
-# Complete build (all steps)
-./scripts/build.sh
+# Frontend production build (lein deps, npm ci, shadow release)
+./scripts/build-ui.sh
+
+# Full release build — produces agent-o-rama-<VERSION>.zip (requires Java 21)
+./scripts/build-release.sh
 ```
 
 ### Development Workflow
@@ -158,9 +161,7 @@ To start the UI development server:
 lein with-profile +ui run -m shadow.cljs.devtools.cli --npm watch :frontend
 ```
 
-The UI will be available at `http://localhost:8080` when running agents with `(aor/start-ui ipc)`.
-
-@dev/ui.md
+The UI will be available at `http://localhost:1974` when running agents with `(aor/start-ui ipc)`.
 
 ## Working with Examples
 
@@ -175,4 +176,3 @@ To run an example:
 ; In the example namespace
 (run-agent)  ; Most examples provide this function
 ```
-- the project task list is in .claude/TASKS.md
