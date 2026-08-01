@@ -16,9 +16,7 @@ Agent steps provide fine-grained control over agent execution:
 ### Result Step
 Contains final output when agent execution completes:
 ```clojure
-{:type :result
- :value "Final agent response"
- :metadata {:execution-time-ms 2500}}
+{:result "Final agent response"}
 ```
 
 ### Human Input Request Step
@@ -30,42 +28,26 @@ Pauses execution to request human input:
  :request-id "req-abc123"}
 ```
 
-### Continuation Step
-Indicates agent continues processing:
-```clojure
-{:type :continuation
- :status "processing"
- :current-node "analyze-data"
- :progress 0.6}
-```
-
 ## Client-Side Processing
 
 ### Step-by-Step Execution
 ```clojure
-(let [agent-invoke (agent-initiate client "MyAgent" input)]
+(let [agent-invoke (agent-initiate client input)]
   (loop [step (agent-next-step client agent-invoke)]
     (case (:type step)
       :result
-      (println "Final result:" (:value step))
+      (println "Final result:" (:result step))
 
       :human-input-request
       (let [response (get-user-input (:prompt step))]
-        (provide-human-input client agent-invoke (:request-id step) response)
-        (recur (agent-next-step client agent-invoke)))
-
-      :continuation
-      (do (println "Progress:" (:progress step))
-          (recur (agent-next-step client agent-invoke))))))
+        (provide-human-input client step response)
+        (recur (agent-next-step client agent-invoke))))))
 ```
 
 ### Asynchronous Processing
 ```clojure
-(agent-next-step-async client agent-invoke
-  (fn [step]
-    (handle-step step)
-    (when-not (= :result (:type step))
-      (schedule-next-step))))
+(let [step (.get (agent-next-step-async client agent-invoke))]
+  (handle-step step))
 ```
 
 ## Integration with Streaming
@@ -84,15 +66,6 @@ Steps provide detailed execution insights:
 - **Resource Utilization**: Monitor memory and CPU usage per step
 
 ## Error Handling
-
-### Failed Steps
-```clojure
-{:type :error
- :error {:message "Processing failed"
-         :cause "Network timeout"
-         :retry-count 2}
- :recoverable true}
-```
 
 ### Retry Logic
 Steps support automatic retry with:
