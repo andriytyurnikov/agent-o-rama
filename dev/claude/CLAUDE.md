@@ -111,7 +111,7 @@ npx playwright test
 
   ; Declare shared objects and stores
   (aor/declare-agent-object topology "my-object" value)
-  (aor/declare-key-value-store topology "my-store" String Object)
+  (aor/declare-key-value-store topology "$$my-store" String Object)
 
   ; Define agent graph
   (-> topology
@@ -128,7 +128,7 @@ npx playwright test
 ### Using Stores
 ```clojure
 ; In agent node functions:
-(let [store (aor/get-store agent-node "store-name")]
+(let [store (aor/get-store agent-node "$$store-name")]
   (store/get store key)
   (store/put! store key value))
 ```
